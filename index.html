@@ -61,6 +61,9 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
 dialog form{padding:16px 16px 0}
 .acciones{position:sticky;bottom:0;background:var(--card);margin:6px -16px 0;padding:10px 16px calc(12px + env(safe-area-inset-bottom));border-top:1px solid var(--line);z-index:2}
 dialog h3{margin:0 0 12px}
+.lab{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:10px;background:var(--bg)}
+.lab-pronto{opacity:.8}
+.lab .row .btn{margin-top:2px}
 .creditos{font-size:12px;color:var(--mut);text-align:center;margin:18px 0 6px;line-height:1.5}
 #navCred{display:none}
 .fab{position:fixed;right:16px;bottom:76px;width:54px;height:54px;border-radius:50%;font-size:28px;line-height:1;z-index:7;box-shadow:0 3px 10px rgba(0,0,0,.25)}
@@ -149,7 +152,7 @@ details.adv{margin:4px 0 10px}details.adv summary{cursor:pointer;color:var(--olv
 
 <script>
 // ===== Configuración =====
-const VERSION = '1.1';
+const VERSION = '1.2';
 const VERSION_FECHA = '8 oct 2026';
 const CREDITOS = `Olivas v${VERSION} (${VERSION_FECHA}) · © 2026 Alfonso Carrascosa Martínez · Hecha con Claude (Anthropic)`;
 const SUPA_URL = 'https://kseyndjbmkaflpoqitsj.supabase.co';
@@ -158,7 +161,7 @@ const sb = supabase.createClient(SUPA_URL, SUPA_KEY);
 
 const CATS_DEF = ['Gasoil / gasolina','Cuadrillas / destajo','Seguros sociales','Averías y reparaciones','Mantenimiento maquinaria','Fitosanitarios','Abonos','EPIs','Herramientas','Seguros','IBI / impuestos','Cuotas cooperativa','Transporte','Otros'];
 const ING_TIPOS = ['Liquidación','Anticipo','Liquidación complementaria','Ayuda PAC','Compensación IVA (REAGP)','Otros'];
-const TAREA_TIPOS = ['Poda','Curar / tratamiento','Abonado','Desvareto','Herbicida / suelo','Recogida','Riego','Mantenimiento','Papeles / trámites','Otra'];
+const TAREA_TIPOS = ['Poda','Pestugar','Juntar ramas','Desbrozar','Soplar','Curar / tratamiento','Abonado','Herbicida / suelo','Recogida','Riego','Revisar','Mantenimiento','Papeles / trámites','Otra'];
 const MAQ_TIPOS = ['Tractor','Coche / todoterreno','Remolque','Atomizador','Vibrador / vareadora','Desbrozadora','Motosierra','Otra'];
 const UMB_DEF = {
   spray_vmin:2, spray_vmax:10, spray_rmax:20, spray_tmin:5, spray_tmax:28, spray_hrmin:40, spray_pmax:30, spray_horas_lluvia:4, spray_min_horas:3,
@@ -169,8 +172,8 @@ const UMB_DEF = {
 };
 
 // ===== Estado =====
-let D = {fincas:[],maquinas:[],gastos:[],ingresos:[],tratamientos:[],tareas:[],trabajadores:[],jornales:[],empresas:[],servicios:[],facturas:[],factura_lineas:[],dias_perdidos:[],comunidades:[],riego_pagos:[]};
-const JOR_TAREAS = ['Recogida','Poda','Desvareto','Abonado','Curar','Desbrozar','Día perdido','Otra'];
+let D = {fincas:[],maquinas:[],gastos:[],ingresos:[],tratamientos:[],tareas:[],trabajadores:[],jornales:[],empresas:[],servicios:[],facturas:[],factura_lineas:[],dias_perdidos:[],comunidades:[],riego_pagos:[],labores:[],consejos:[]};
+const JOR_TAREAS = ['Recogida','Poda','Pestugar','Juntar ramas','Desbrozar','Soplar','Curar','Abonar','Día perdido','Otra'];
 let ULT = {}; try{ ULT = JSON.parse(localStorage.getItem('olv_ult')||'{}'); }catch(e){}
 function recordar(k,v){ ULT[k]=v; try{ localStorage.setItem('olv_ult',JSON.stringify(ULT)); }catch(e){} }
 let AJ = {cats:CATS_DEF.slice(), umb:{...UMB_DEF}};
@@ -256,8 +259,8 @@ window.addEventListener('online', vaciarCola); setInterval(vaciarCola, 60000);
 function sinRed(error){ if(esRed(error)){ toast('Sin cobertura: para editar o borrar necesitas conexión'); return true; } return false; }
 
 async function cargar(k){
-  const ord = {fincas:'nombre',maquinas:'nombre',gastos:'fecha',ingresos:'fecha',tratamientos:'fecha',tareas:'fecha',trabajadores:'nombre',jornales:'fecha',empresas:'nombre',servicios:'fecha',facturas:'fecha',factura_lineas:'created_at',dias_perdidos:'fecha',comunidades:'nombre',riego_pagos:'fecha'}[k];
-  const asc = !['gastos','ingresos','tratamientos','jornales','servicios','facturas','dias_perdidos','riego_pagos'].includes(k);
+  const ord = {fincas:'nombre',maquinas:'nombre',gastos:'fecha',ingresos:'fecha',tratamientos:'fecha',tareas:'fecha',trabajadores:'nombre',jornales:'fecha',empresas:'nombre',servicios:'fecha',facturas:'fecha',factura_lineas:'created_at',dias_perdidos:'fecha',comunidades:'nombre',riego_pagos:'fecha',labores:'fecha',consejos:'created_at'}[k];
+  const asc = !['gastos','ingresos','tratamientos','jornales','servicios','facturas','dias_perdidos','riego_pagos','labores','consejos'].includes(k);
   let todo=[], desde=0;
   for(;;){ // Supabase devuelve como mucho 1000 filas por consulta
     const {data,error} = await sb.from('olv_'+k).select('*').order(ord,{ascending:asc}).order('id').range(desde,desde+999);
@@ -506,7 +509,7 @@ async function guardar(k, reg, otro=false){
   if(otro) abrir(k);
 }
 const USOS={
-  fincas:id=>['gastos','ingresos','jornales','servicios','tratamientos','facturas','dias_perdidos','riego_pagos'].reduce((n,t)=>n+D[t].filter(r=>r.finca_id===id).length,0),
+  fincas:id=>['gastos','ingresos','jornales','servicios','tratamientos','facturas','dias_perdidos','riego_pagos','labores'].reduce((n,t)=>n+D[t].filter(r=>r.finca_id===id).length,0),
   trabajadores:id=>D.jornales.filter(j=>j.trabajador_id===id).length,
   comunidades:id=>D.fincas.filter(f=>f.comunidad_id===id).length+D.riego_pagos.filter(r=>r.comunidad_id===id).length,
   empresas:id=>D.jornales.filter(j=>j.empresa_id===id).length+D.servicios.filter(x=>x.empresa_id===id).length+D.trabajadores.filter(t=>t.empresa_id===id).length,
@@ -918,6 +921,244 @@ function vRiego(){
   <div class="card"><h2>Fincas con riego</h2>${fr.length?`<table><tr><th>Finca</th><th class="n">Olivos de riego</th><th class="n">Coste ${esc(CAMP)}</th></tr>${fr.map(f=>{ const c=costeFinca(f); const o=olivosRiego(f); return `<tr class="click" data-ed="fincas:${f.id}"><td>${esc(f.nombre)}<div class="mut">${f.comunidad_id?esc(comNom(f.comunidad_id)):'sin comunidad'}</div></td><td class="n">${num(o)}</td><td class="n">${eur(c)}<div class="mut">${o?eur(c/o)+'/olivo':''}</div></td></tr>`; }).join('')}</table>`:'<p class="mut">Ninguna finca tiene marcado el riego. Entra en la finca y marca «Tiene riego».</p>'}</div>`;
 }
 
+// ===== Labores: qué toca en cada finca =====
+// Calendario orientativo para olivar de Jaén (Las Villas / Sierra de Segura). Meses 1-12.
+// tipo: 'olivo' (hace falta el olivo seco) · 'spray' (ventana para curar) · 'antes_lluvia' (mejor justo antes de llover)
+const LABORES = [
+  {id:'revisar_recogida', nombre:'Preparar la recogida: vibrador, mantos, remolque', meses:[10,11], fam:'prep_recogida', global:1},
+  {id:'desbrozar_otono', nombre:'Desbrozar antes de la recogida', meses:[9,10], fam:'desbrozar', tipo:'olivo'},
+  {id:'soplar', nombre:'Soplar y limpiar los ruedos', meses:[10,11], fam:'soplar', tipo:'olivo'},
+  {id:'cobre_otono', nombre:'Curar con cobre de otoño (repilo)', meses:[9,10,11], fam:'cobre', tipo:'spray', info:'Mejor antes de las lluvias. En Sierra de Segura el repilo salió de los más altos de Jaén en 2025 (RAIF): vigila umbrías y fincas junto a arroyos.'},
+  {id:'foliar_otono', nombre:'Abono foliar de otoño (potasio, engorde)', meses:[9,10], fam:'foliar', tipo:'spray'},
+  {id:'herbicida_otono', nombre:'Tratamiento de suelo de otoño', meses:[10,11,12], fam:'herbicida', tipo:'spray', info:'Tras las primeras lluvias. Desactívalo en Ajustes si llevas cubierta.'},
+  {id:'recogida', nombre:'Recoger la aceituna', meses:[11,12,1,2], fam:'recogida', tipo:'olivo', info:'Al apuntar jornadas con la faena «Recogida» se da por empezada.'},
+  {id:'cobre_postrec', nombre:'Cobre después de recoger (heridas del vareo)', tras:{fam:'recogida',de:5,a:25,fin:1}, fam:'cobre', tipo:'spray', info:'Protege las heridas de la recogida del repilo y la tuberculosis.'},
+  {id:'atomizador', nombre:'Revisar y calibrar el atomizador', meses:[2,9], fam:'atomizador', global:1},
+  {id:'herbicida_primavera', nombre:'Tratamiento de suelo de primavera', meses:[2,3], fam:'herbicida', tipo:'spray'},
+  {id:'abonado_suelo', nombre:'Abonar al suelo', meses:[2,3], fam:'abonado', tipo:'antes_lluvia', info:'Mejor justo antes de una lluvia para que el abono entre.'},
+  {id:'poda', nombre:'Podar', meses:[1,2,3,4], fam:'poda', tipo:'olivo', info:'Evita podar con heladas o con el olivo mojado: las heridas son entrada de tuberculosis.'},
+  {id:'juntar_poda', nombre:'Juntar, picar o sacar las ramas de la poda', tras:{fam:'poda',de:0,a:20}, fam:'juntar', tipo:'olivo'},
+  {id:'cobre_poda', nombre:'Cobre después de la poda (heridas)', tras:{fam:'poda',de:0,a:15}, fam:'cobre', tipo:'spray'},
+  {id:'lena', nombre:'Sacar o tapar la leña antes del 1 de mayo (barrenillo)', meses:[3,4], tras:{fam:'poda',de:0,a:150}, fam:'lena'},
+  {id:'desbrozar', nombre:'Desbrozar o segar la hierba', meses:[3,4,5], fam:'desbrozar', tipo:'olivo'},
+  {id:'cobre_primavera', nombre:'Curar con cobre de primavera (repilo)', meses:[3,4,5], fam:'cobre', tipo:'spray'},
+  {id:'foliar_primavera', nombre:'Abono foliar y aminoácidos antes de la flor (boro)', meses:[4,5], fam:'foliar', tipo:'spray'},
+  {id:'prays', nombre:'Revisar prays en la floración (boletín RAIF)', meses:[4,5], fam:'prays', global:1},
+  {id:'riego_revisar', nombre:'Revisar goteros, filtros y tuberías', meses:[4,5], fam:'riego', riego:1},
+  {id:'pestugar', nombre:'Pestugar (chupones y varetas)', meses:[5,6,7], fam:'pestugar', tipo:'olivo'},
+  {id:'juntar_pestugar', nombre:'Juntar las varetas del pestugado', tras:{fam:'pestugar',de:0,a:10}, fam:'juntar', tipo:'olivo'},
+  {id:'analisis_foliar', nombre:'Análisis foliar (para ajustar el abonado)', meses:[7], fam:'analisis'},
+  {id:'mosca', nombre:'Vigilar la mosca: trampas y boletín RAIF', meses:[7,8,9,10], cada:14, fam:'mosca', global:1},
+  {id:'vuelta', nombre:'Darse una vuelta por la finca', especial:'vuelta'},
+];
+const KW = {
+  recogida:['recog','aceitun','vibra','vareo'], poda:['poda','podar'], pestugar:['pestug','desvaret','chupon','vareta'],
+  juntar:['juntar','ramas','tritur','picar','astill','quemar'], lena:['leña','lena','barrenillo','tritur','astill'],
+  desbrozar:['desbroz','segar','siega'], soplar:['sopla','soplar','ruedo'], cobre:['cobre','cupr','oxiclor','hidróxido','hidroxido','repilo','bordel'],
+  foliar:['amino','foliar','boro','potas','urea','bioestim'], abonado:['abon','fertiliz','npk','nitrog'], herbicida:['herbic','glifos','preemerg','oxifluor','flazasulf','tratamiento de suelo'],
+  riego:['gotero','filtro','tuberia','tubería'], analisis:['análisis','analisis'], mosca:['mosca','trampa','mosquero'], prays:['prays','polilla'],
+  atomizador:['atomiz','calibr'], prep_recogida:['mantos','vibrador','preparar recog'],
+};
+const MESES=['','ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+function laboresActivas(){ const off=new Set(AJ.labores_off||[]); return [...LABORES,...(AJ.labores_propias||[]).map(p=>({...p,propia:1,fam:p.id}))].filter(l=>!off.has(l.id)); }
+function ventana(meses, f=hoy()){
+  if(!meses||!meses.length) return null;
+  const [y,m]=f.split('-').map(Number); if(!meses.includes(m)) return null;
+  const pm=x=>x===1?12:x-1, nm=x=>x===12?1:x+1;
+  let s=m, ys=y, n=0; while(meses.includes(pm(s))&&n<11){ if(s===1) ys--; s=pm(s); n++; }
+  let e=m, ye=y; n=0; while(meses.includes(nm(e))&&n<11){ if(e===12) ye++; e=nm(e); n++; }
+  const ult=new Date(ye,e,0).getDate();
+  return {ini:`${ys}-${String(s).padStart(2,'0')}-01`, fin:`${ye}-${String(e).padStart(2,'0')}-${ult}`};
+}
+function proxVentana(meses, f=hoy()){ for(let k=1;k<=1;k++){ const d=new Date(f); d.setMonth(d.getMonth()+k,1); const s=iso(d); const v=ventana(meses,s); if(v) return v; } return null; }
+// Todo lo que has ido apuntando, como «eventos» con su texto
+function eventos(){
+  const ev=[];
+  D.labores.filter(l=>l.estado==='hecha').forEach(l=>ev.push({fecha:l.fecha,finca:l.finca_id,cod:l.labor,txt:''}));
+  D.jornales.forEach(j=>ev.push({fecha:j.fecha,finca:j.finca_id,txt:(j.tarea||'').toLowerCase(),tipo:'jornal'}));
+  D.servicios.forEach(x=>ev.push({fecha:x.fecha,finca:x.finca_id,txt:'recogida',tipo:'jornal'}));
+  D.tratamientos.forEach(t=>ev.push({fecha:t.fecha,finca:t.finca_id,txt:`${t.producto||''} ${t.motivo||''}`.toLowerCase(),tipo:'trat'}));
+  D.tareas.filter(t=>t.hecha).forEach(t=>ev.push({fecha:t.hecha_fecha||t.fecha,finca:t.finca_id,txt:`${t.titulo} ${t.tipo||''}`.toLowerCase(),tipo:'tarea'}));
+  return ev;
+}
+function casa(L, e){
+  if(e.cod) return e.cod===L.id || LABORES.find(x=>x.id===e.cod)?.fam===L.fam;
+  if(L.fam==='abonado' && (e.tipo==='trat' || KW.foliar.some(k=>e.txt.includes(k)))) return false;
+  return (KW[L.fam]||[L.nombre.toLowerCase()]).some(k=>e.txt.includes(k));
+}
+function ultimo(evs, L, fid, desde){ let u=null; evs.forEach(e=>{ if((e.finca===fid||!e.finca||fid==null) && e.fecha>=(desde||'0') && e.fecha<=hoy() && casa(L,e) && (!u||e.fecha>u)) u=e.fecha; }); return u; }
+function pendientesLabores(){
+  const h=hoy(), evs=eventos(), out=[];
+  const fincas=D.fincas.filter(f=>f.activa);
+  const parado=(L,fid)=>D.labores.some(x=>x.labor===L.id&&x.finca_id===(fid||null)&&x.estado!=='hecha'&&x.hasta&&x.hasta>=h);
+  laboresActivas().forEach(L=>{
+    if(L.especial==='vuelta'){
+      fincas.forEach(f=>{ const u=evs.filter(e=>e.finca===f.id&&e.fecha<=h).reduce((m,e)=>e.fecha>m?e.fecha:m,''); const d=u?difDias(u,h):999;
+        if(d>=45 && !parado(L,f.id)) out.push({L,f,toca:1,resta:null,txt:u?`hace ${d} días que no apuntas nada`:'aún no has apuntado nada'}); });
+      return;
+    }
+    const lista = L.global ? [null] : fincas.filter(f=>!L.riego||f.riego);
+    lista.forEach(f=>{
+      const fid=f?f.id:null; if(parado(L,fid)) return;
+      let desde=null, resta=null, toca=false, pronto=null;
+      if(L.tras){
+        const base=LABORES.find(x=>x.fam===L.tras.fam)||{fam:L.tras.fam,nombre:''};
+        const ub=ultimo(evs,base,fid,addDias(h,-Math.max(60,L.tras.a+10)));
+        if(!ub) return;
+        if(L.tras.fin && difDias(ub,h)<L.tras.de) return; // aún se está haciendo
+        desde=ub; resta=L.tras.a-difDias(ub,h); toca=difDias(ub,h)>=L.tras.de;
+        if(L.meses && !ventana(L.meses)) return;
+        if(L.meses){ const v=ventana(L.meses); resta=Math.min(resta,difDias(h,v.fin)); }
+      } else if(L.meses){
+        const v=ventana(L.meses);
+        if(v){ desde=v.ini; resta=difDias(h,v.fin); toca=true;
+          if(L.cada){ const u=ultimo(evs,L,fid,v.ini); if(u && difDias(u,h)<L.cada) return; desde=null; } }
+        else { const p=proxVentana(L.meses); if(p && difDias(h,p.ini)<=21){ pronto=p.ini; desde=p.ini; } else return; }
+      } else return;
+      if(desde && ultimo(evs,L,fid,desde)) return; // ya está hecha
+      out.push({L,f,toca,resta,pronto});
+    });
+  });
+  // agrupar por labor
+  const G={}; out.forEach(x=>{ const g=G[x.L.id]=G[x.L.id]||{L:x.L,fincas:[],toca:false,resta:null,pronto:x.pronto,txt:x.txt}; g.fincas.push(x.f); g.toca=g.toca||x.toca; if(x.resta!=null) g.resta=g.resta==null?x.resta:Math.min(g.resta,x.resta); });
+  return Object.values(G).sort((a,b)=>(b.toca-a.toca)||((a.resta??99)-(b.resta??99)));
+}
+async function marcarLabor(lid, fids, estado='hecha', hasta=null){
+  const filas=fids.map(fid=>({labor:lid, finca_id:fid, estado, hasta, fecha:hoy()}));
+  const r=await insertar('labores',filas);
+  if(!r.ok){ toast('Error: '+r.error.message); return; }
+  if(!r.offline) await cargar('labores'); render();
+  const L=laboresActivas().find(x=>x.id===lid);
+  toast(estado==='hecha'?`Hecho: ${L?.nombre||''}`:'Aplazado una semana', r.offline?null:async()=>{ for(const f of r.filas) await sb.from('olv_labores').delete().eq('id',f.id); await cargar('labores'); render(); });
+}
+function tareaDeLabor(lid, fid){ const L=laboresActivas().find(x=>x.id===lid); abrir('tareas',null,{titulo:L.nombre, finca_id:fid||'', tipo:''}); }
+function htmlLabores(lista, max){
+  if(!lista.length) return '<p class="mut">Nada pendiente según el calendario. ¡Al día!</p>';
+  return lista.slice(0,max||99).map(g=>{ const L=g.L; const fs=g.fincas;
+    const plazo = g.pronto ? `<span class="tag">desde el ${fFecha(g.pronto)}</span>` : g.resta!=null ? `<span class="tag" style="${g.resta<=7?'background:rgba(192,57,43,.15)':''}">${g.resta<=0?'último día':g.resta===1?'queda 1 día':`quedan ${g.resta} días`}</span>` : '';
+    const ids=fs.map(f=>f?`'${f.id}'`:'null').join(',');
+    return `<div class="lab ${g.toca?'':'lab-pronto'}">
+      <div class="row" style="flex-wrap:nowrap;align-items:flex-start"><b style="flex:1">${esc(L.nombre)}</b>${plazo}</div>
+      ${g.txt?`<div class="mut">${esc(g.txt)}</div>`:''}${L.info?`<div class="mut">${esc(L.info)}</div>`:''}
+      <div class="mut" data-mejor="${L.id}" data-fincas="${fs.map(f=>f?f.id:'').join(',')}"></div>
+      ${g.toca?`<div class="chips" style="margin:6px 0 4px">${fs.map(f=>`<button type="button" class="chip" title="Marcar como hecho" onclick="marcarLabor('${L.id}',[${f?`'${f.id}'`:'null'}])">✓ ${f?esc(f.nombre):'Hecho'}</button>`).join('')}${fs.length>1?`<button type="button" class="chip" onclick="marcarLabor('${L.id}',[${ids}])">✓ Todas</button>`:''}</div>
+      <div class="row"><button class="btn sec sm" onclick="marcarLabor('${L.id}',[${ids}],'pospuesta','${addDias(hoy(),7)}')">Ahora no</button><button class="btn sec sm" onclick="tareaDeLabor('${L.id}',${fs.length===1&&fs[0]?`'${fs[0].id}'`:'null'})">Apuntar como tarea</button>${g.resta!=null||L.especial?`<button class="btn sec sm" onclick="if(confirm('¿No hacer esto esta temporada?')) marcarLabor('${L.id}',[${ids}],'no_toca','${addDias(hoy(),L.especial?60:Math.max(1,g.resta||30))}')">No toca</button>`:''}</div>`:`<div class="mut">${fs.map(f=>f?esc(f.nombre):'').filter(Boolean).join(', ')}</div>`}
+    </div>`; }).join('');
+}
+// Mejor día según la previsión de la primera finca con ubicación
+async function postLabores(){
+  const els=[...document.querySelectorAll('[data-mejor]')]; if(!els.length) return;
+  for(const el of els){
+    const L=laboresActivas().find(x=>x.id===el.dataset.mejor); if(!L||!L.tipo) continue;
+    const f=el.dataset.fincas.split(',').map(id=>D.fincas.find(x=>x.id===id)).find(x=>x&&x.lat!=null) || D.fincas.find(x=>x.activa&&x.lat!=null);
+    if(!f) continue;
+    try{
+      const ev=evaluarTiempo(await getMeteo(f),f);
+      let t='';
+      if(L.tipo==='spray'){ const d=ev.find(x=>x.spray.c==='g'); t=d?`Mejor día para curar: <b>${d.nombre} ${fFecha(d.fecha)}</b> (${esc(d.spray.txt)})`:'Esta semana no hay buena ventana para curar.'; }
+      else if(L.tipo==='olivo'){ const d=ev.find(x=>x.work.c==='g'); t=d?`Buen día: <b>${d.nombre} ${fFecha(d.fecha)}</b>${d.work.txt!=='bien'?' ('+esc(d.work.txt)+')':''}`:'Esta semana el tiempo no acompaña.'; }
+      else if(L.tipo==='antes_lluvia'){ const i=ev.findIndex((x,k)=>x.work.c!=='r' && ev.slice(k+1,k+4).some(y=>y.lluvia>=3)); t=i>=0?`Mejor día: <b>${ev[i].nombre} ${fFecha(ev[i].fecha)}</b>, antes de la lluvia`:'No se prevé lluvia esta semana.'; }
+      if(el.isConnected) el.innerHTML=t+(f?` <span class="mut">· ${esc(f.nombre)}</span>`:'');
+    }catch(e){}
+  }
+}
+function vLabores(){
+  const l=pendientesLabores(); const toca=l.filter(g=>g.toca), pronto=l.filter(g=>!g.toca);
+  const hechas=D.labores.filter(x=>x.estado==='hecha').slice(0,15);
+  return `<div class="card"><h2>Qué toca ahora<span class="sp"></span><a class="btn sec sm" href="https://www.juntadeandalucia.es/agriculturapescaaguaydesarrollorural/raif/boletin-provincial/informe-semanal/" target="_blank" rel="noopener">Boletín RAIF Jaén</a></h2>
+    <p class="mut">Calendario orientativo para olivar de Jaén. Tiene en cuenta lo que ya has apuntado (jornadas, tratamientos, tareas hechas). Toca una finca cuando esté hecha.</p>${htmlLabores(toca)}</div>
+  ${pronto.length?`<div class="card"><h2>Próximamente</h2>${htmlLabores(pronto)}</div>`:''}
+  ${hechas.length?`<div class="card"><h2>Últimas labores marcadas</h2><table>${hechas.map(x=>{ const L=laboresActivas().find(y=>y.id===x.labor)||{nombre:x.labor}; return `<tr><td>${esc(L.nombre)}<div class="mut">${esc(fincaNom(x.finca_id))}</div></td><td class="n">${fFecha(x.fecha)}</td></tr>`; }).join('')}</table></div>`:''}
+  <p class="mut">Las labores se activan, desactivan o añaden en Más → Ajustes. Cada finca es distinta: si algo no te cuadra, «No toca» y no vuelve a salir esta temporada.</p>`;
+}
+
+// ===== Técnico en el bolsillo =====
+async function contextoTecnico(pregunta){
+  const h=hoy(), hace=n=>addDias(h,-n);
+  const fincas=D.fincas.filter(f=>f.activa);
+  const fc=fincas.find(f=>f.lat!=null);
+  let clima=null, prevision=null;
+  if(fc){ try{
+    const w=await getMeteo(fc,92); const d=w.daily;
+    const dias=d.time.map((t,i)=>({f:t,ll:d.precipitation_sum[i]||0,tmax:d.temperature_2m_max[i],tmin:d.temperature_2m_min[i]}));
+    const pas=dias.filter(x=>x.f<h), sum=(a,k)=>Math.round(a.reduce((s,x)=>s+(x[k]||0),0)*10)/10;
+    const sep=`${parseInt(campDe(h))}-09-01`; const desde=pas.filter(x=>x.f>=sep);
+    const u30=pas.filter(x=>x.f>=hace(30)), u14=pas.filter(x=>x.f>=hace(14));
+    clima={ lluvia_desde_1_sep_mm:sum(desde,'ll'), lluvia_ult_7d_mm:sum(pas.filter(x=>x.f>=hace(7)),'ll'), lluvia_ult_30d_mm:sum(u30,'ll'), dias_lluvia_ult_30d:u30.filter(x=>x.ll>=1).length,
+      lluvia_ult_90d_mm:sum(pas,'ll'), heladas_ult_30d:u30.filter(x=>x.tmin<=0).length, tmin_mas_baja_30d:Math.min(...u30.map(x=>x.tmin)), tmax_mas_alta_30d:Math.max(...u30.map(x=>x.tmax)),
+      t_media_ult_14d: u14.length?Math.round(u14.reduce((s,x)=>s+(x.tmax+x.tmin)/2,0)/u14.length*10)/10:null, nota:'Datos de modelo meteorológico para la primera finca; las fincas están cerca.' };
+    prevision=evaluarTiempo(w,fc).map(x=>({fecha:x.fecha,dia:x.nombre,tiempo:WCODE(x.code),tmin:x.tmin,tmax:x.tmax,lluvia_mm:x.lluvia,rafagas_kmh:x.rafaga,curar:x.spray.txt,trabajar_olivo:x.work.txt,aceituna:x.ace.txt}));
+  }catch(e){} }
+  const nomL=id=>(laboresActivas().find(x=>x.id===id)||{nombre:id}).nombre;
+  const fact=Object.fromEntries(D.facturas.map(f=>[f.id,f]));
+  const faenas={}; D.jornales.filter(j=>j.fecha>=hace(180)).forEach(j=>{ const k=`${j.tarea||'sin faena'} · ${fincaNom(j.finca_id)}`; const x=faenas[k]=faenas[k]||{jornadas:0,ultima:''}; x.jornadas++; if(j.fecha>x.ultima) x.ultima=j.fecha; });
+  const prod={}; D.ingresos.filter(i=>i.kilos).forEach(i=>{ const x=prod[i.campana]=prod[i.campana]||{kilos:0,rend_x_kg:0}; x.kilos+=Number(i.kilos); x.rend_x_kg+=Number(i.kilos)*(Number(i.rendimiento)||0); });
+  return {
+    hoy:h, campana:CAMP, zona:{comarca:'Las Villas / Sierra de Segura (Jaén)', municipios:[...new Set(fincas.map(f=>f.municipio).filter(Boolean))], lat:fc?.lat, lon:fc?.lon},
+    fincas:fincas.map(f=>({nombre:f.nombre, municipio:f.municipio, olivos:f.olivos, ha:f.ha, riego:!!f.riego, olivos_riego:f.riego?olivosRiego(f):0, se_moja_mas: f.umbral_hr!=null||Number(f.retraso_secado_h)>0, notas:f.notas||undefined})),
+    clima_pasado:clima, prevision_7_dias:prevision,
+    hecho_ultimo_ano:{
+      labores:D.labores.filter(l=>l.estado==='hecha'&&l.fecha>=hace(365)).map(l=>({fecha:l.fecha,labor:nomL(l.labor),finca:fincaNom(l.finca_id)})),
+      tratamientos:D.tratamientos.filter(t=>t.fecha>=hace(365)).map(t=>({fecha:t.fecha,finca:fincaNom(t.finca_id),producto:t.producto,dosis:t.dosis,motivo:t.motivo})),
+      jornadas_ult_6_meses:Object.entries(faenas).map(([k,v])=>({faena_finca:k,...v})),
+      dias_perdidos:D.dias_perdidos.filter(x=>x.fecha>=hace(90)).map(x=>({fecha:x.fecha,finca:fincaNom(x.finca_id),motivo:x.motivo})),
+      compras_abonos_y_fitos:D.factura_lineas.filter(l=>['Abonos','Fitosanitarios'].includes(l.categoria)&&fact[l.factura_id]?.fecha>=hace(365)).map(l=>({fecha:fact[l.factura_id].fecha,producto:l.nombre_comun||l.producto,cantidad:l.cantidad,unidad:l.unidad})),
+    },
+    produccion_por_campana:Object.entries(prod).map(([c,x])=>({campana:c,kilos:Math.round(x.kilos),rendimiento_medio:x.kilos?Math.round(x.rend_x_kg/x.kilos*100)/100:null})),
+    pendientes_calendario:pendientesLabores().filter(g=>g.toca).map(g=>({labor:g.L.nombre,fincas:g.fincas.map(f=>f?f.nombre:'todas'),dias_que_quedan:g.resta})),
+    consejo_anterior: D.consejos[0] ? {fecha:D.consejos[0].fecha, pregunta:D.consejos[0].pregunta, resumen:D.consejos[0].respuesta?.resumen, te_pregunto:D.consejos[0].respuesta?.preguntas} : null,
+    pregunta:pregunta||null,
+  };
+}
+let TEC_ESPERA=false;
+async function pedirConsejo(pregunta){
+  if(TEC_ESPERA) return;
+  if(!navigator.onLine){ toast('El técnico necesita cobertura'); return; }
+  TEC_ESPERA=true; SUB.campo='tecnico'; if(VIEW!=='campo') ir('campo'); else render();
+  try{
+    const contexto=await contextoTecnico(pregunta);
+    const {data:res,error}=await sb.functions.invoke('tecnico-olivar',{body:{contexto}});
+    if(error){ let m=error.message; try{ const j=await error.context.json(); m=j.error||m; }catch(e){} throw new Error(m); }
+    if(!res?.datos) throw new Error(res?.error||'Sin respuesta');
+    const r=await insertar('consejos',{fecha:hoy(), created_at:new Date().toISOString(), pregunta:pregunta||null, respuesta:res.datos, ia:res.proveedor_ia});
+    if(!r.ok) throw r.error;
+    await cargar('consejos');
+  }catch(e){ toast('No se pudo consultar: '+e.message); }
+  TEC_ESPERA=false; render();
+}
+function tareaDeConsejo(i){
+  const c=D.consejos[0]; const r=c?.respuesta?.recomendaciones?.[i]; if(!r) return;
+  const f=D.fincas.find(x=>(r.fincas||[]).length===1&&x.nombre===r.fincas[0]);
+  abrir('tareas',null,{titulo:r.titulo, finca_id:f?.id||'', notas:[r.cuando,r.que_echar].filter(Boolean).join(' · ')});
+}
+const PRIO={alta:'background:rgba(192,57,43,.15)',media:'background:rgba(197,138,11,.18)',baja:''};
+function htmlConsejo(c, corto){
+  const r=c.respuesta||{};
+  const recs=(r.recomendaciones||[]).slice(0,corto?3:99);
+  return `<p>${esc(r.resumen||'')}</p>
+  ${r.respuesta?`<div class="aviso ok"><b>${esc(c.pregunta||'')}</b><br>${esc(r.respuesta)}</div>`:''}
+  ${recs.map((x,i)=>`<div class="lab"><div class="row" style="flex-wrap:nowrap;align-items:flex-start"><b style="flex:1">${esc(x.titulo)}</b><span class="tag" style="${PRIO[x.prioridad]||''}">${esc(x.prioridad||'')}</span></div>
+    ${x.cuando?`<div><span class="mut">Cuándo:</span> ${esc(x.cuando)}</div>`:''}
+    ${(x.fincas||[]).length?`<div><span class="mut">Dónde:</span> ${esc(x.fincas.join(', '))}</div>`:''}
+    ${x.que_echar?`<div><span class="mut">Qué echar:</span> ${esc(x.que_echar)}</div>`:''}
+    ${!corto&&x.por_que?`<div class="mut">${esc(x.por_que)}</div>`:''}
+    ${!corto?`<div class="row" style="margin-top:6px"><button class="btn sec sm" onclick="tareaDeConsejo(${i})">Apuntar como tarea</button></div>`:''}</div>`).join('')}
+  ${!corto&&(r.vigilar||[]).length?`<b>Vigila estos días</b><ul>${r.vigilar.map(v=>`<li>${esc(v)}</li>`).join('')}</ul>`:''}
+  ${!corto&&(r.preguntas||[]).length?`<b>Para afinar más le falta saber</b><ul>${r.preguntas.map(v=>`<li>${esc(v)}</li>`).join('')}</ul><p class="mut">Puedes contestárselo escribiendo arriba.</p>`:''}
+  <p class="mut" style="font-size:12px">${fFecha(c.fecha)} · ${c.ia==='gemini'?'Gemini':'Claude'} · Orientativo: revisa siempre la etiqueta, el plazo de seguridad y el boletín de la RAIF, y consulta a tu técnico o ATRIA ante la duda.</p>`;
+}
+const PREG_RAPIDAS=['¿Qué hago esta semana?','¿Tengo que curar ya?','¿Qué abono echo este año?','¿Cómo viene el repilo?','¿Cuándo empiezo a recoger?'];
+function vTecnico(){
+  const c=D.consejos[0];
+  return `<div class="card"><h2>Técnico</h2>
+    <p class="mut">Te aconseja con tus fincas, lo que llevas hecho, lo que has comprado, cómo viene el año de lluvias y temperaturas y la previsión de la semana.</p>
+    <div class="chips">${PREG_RAPIDAS.map(q=>`<button type="button" class="chip" ${TEC_ESPERA?'disabled':''} onclick="pedirConsejo(this.textContent)">${esc(q)}</button>`).join('')}</div>
+    <div class="row" style="flex-wrap:nowrap"><input id="tecPreg" placeholder="O pregúntale lo que quieras" style="flex:1" onkeydown="if(event.key==='Enter'){pedirConsejo(this.value.trim())}"><button class="btn" ${TEC_ESPERA?'disabled':''} onclick="pedirConsejo($('#tecPreg').value.trim())">${TEC_ESPERA?'Pensando…':'Consultar'}</button></div>
+    ${TEC_ESPERA?'<p class="mut">Mirando el tiempo, tus fincas y lo que llevas hecho… (10-40 s)</p>':''}</div>
+  ${c?`<div class="card"><h2>Último consejo</h2>${htmlConsejo(c)}</div>`:''}
+  ${D.consejos.length>1?`<div class="card"><h2>Anteriores</h2>${D.consejos.slice(1,8).map(x=>`<details><summary>${fFecha(x.fecha)} · ${esc(x.pregunta||'Consejo general')}</summary>${htmlConsejo(x)}</details>`).join('')}</div>`:''}`;
+}
+
 function vCuentas(){
   const s=SUB.cuentas||'gastos';
   const tabs=`<div class="tabs2">${[['gastos','Gastos'],['ingresos','Cobros'],['facturas','Facturas'],['precios','Precios']].map(([k,t])=>`<button data-sub="cuentas:${k}" class="${s===k?'on':''}">${t}</button>`).join('')}</div>`;
@@ -932,7 +1173,7 @@ function fab(k){ const f=$('#fab'); if(!k){f.classList.add('hidden');return;} f.
 function render(){
   const V={inicio:vInicio,cuentas:vCuentas,jornales:vJornales,campo:vCampo,tiempo:vTiempo,mas:vMas}[VIEW];
   $('#view').innerHTML = V();
-  const post={tiempo:postTiempo,mas:postMas,cuentas:postPrecios,inicio:postInicio}[VIEW]; if(post) post();
+  const post={tiempo:postTiempo,mas:postMas,cuentas:postPrecios,inicio:postInicio}[VIEW]; if(post) post(); postLabores();
   document.querySelectorAll('[data-ed]').forEach(el=>el.onclick=e=>{ if(e.target.closest('[data-hecha]')) return; const [k,id]=el.dataset.ed.split(':'); abrir(k, D[k].find(x=>x.id===id)); });
   document.querySelectorAll('[data-hecha]').forEach(el=>el.onclick=e=>{ e.stopPropagation(); marcarHecha(el.dataset.hecha); });
   document.querySelectorAll('[data-sub]').forEach(el=>el.onclick=()=>{ const [v,s]=el.dataset.sub.split(':'); SUB[v]=s; render(); });
@@ -959,6 +1200,9 @@ function vInicio(){
     <div class="kpi"><span>Coste por kg</span><b>${C.kilos?eur(C.totG/C.kilos):'—'}</b></div>
     <div class="kpi"><span>Coste por olivo</span><b>${C.totOl?eur(C.totG/C.totOl):'—'}</b></div>
   </div></div>
+  ${(()=>{ const l=pendientesLabores().filter(g=>g.toca); const c=D.consejos[0]; const reciente=c&&difDias(c.fecha,hoy())<=7;
+    return `<div class="cols2">${l.length?`<div class="card"><h2>Qué toca<span class="sp"></span><button class="btn sec sm" onclick="SUB.campo='labores';ir('campo')">Ver todo (${l.length})</button></h2>${htmlLabores(l,3)}</div>`:''}
+    <div class="card"><h2>Técnico<span class="sp"></span><button class="btn sm" onclick="pedirConsejo('¿Qué hago esta semana?')">${reciente?'Actualizar':'¿Qué hago esta semana?'}</button></h2>${reciente?htmlConsejo(c,1)+`<button class="btn sec sm" onclick="SUB.campo='tecnico';ir('campo')">Ver consejo completo</button>`:'<p class="mut">Pídele consejo: mira tus fincas, lo que llevas hecho, cómo viene el año y la previsión.</p>'}</div></div>`; })()}
   <div class="cols2"><div class="card"><h2>Por finca</h2><div class="scroll"><table>
     <tr><th>Finca</th><th class="n">Gastos</th><th class="n">Ingresos</th><th class="n">Margen</th></tr>${filas}
   </table></div><p class="mut">Gastos comunes (${eur(C.comunTot)}) e ingresos sin finca (${eur(C.ingC)}) se reparten por nº de olivos.${C.amort.length?` Incluye ${eur(C.amort.reduce((s,a)=>s+a.importe,0))} de amortización de maquinaria.`:''}</p></div>
@@ -992,9 +1236,11 @@ function vIngresos(){
   ${l.length?`<div class="scroll"><table><tr><th>Fecha</th><th>Tipo</th><th>Finca</th><th class="n">Kilos</th><th class="n">Importe</th></tr>${l.map(i=>`<tr class="click" data-ed="ingresos:${i.id}"><td>${fFecha(i.fecha)}</td><td>${esc(i.tipo)}${i.rendimiento?`<div class="mut">${num(i.rendimiento,2)} % · ${i.precio_kg?eur(i.precio_kg)+'/kg':''}</div>`:''}</td><td>${i.finca_id?esc(fincaNom(i.finca_id)):'<span class="tag">Común</span>'}</td><td class="n">${i.kilos?num(i.kilos):''}</td><td class="n">${eur(i.importe)}</td></tr>`).join('')}</table></div>`:'<p class="mut">No hay ingresos en esta campaña.</p>'}</div>`;
 }
 function vCampo(){
-  const s=SUB.campo||'tareas';
-  fab(s==='tareas'?'tareas':'tratamientos');
-  const tabs=`<div class="tabs2"><button data-sub="campo:tareas" class="${s==='tareas'?'on':''}">Tareas</button><button data-sub="campo:hechas" class="${s==='hechas'?'on':''}">Hechas</button><button data-sub="campo:trat" class="${s==='trat'?'on':''}">Tratamientos</button></div>`;
+  const s=SUB.campo||'labores';
+  fab(s==='trat'?'tratamientos':'tareas');
+  const tabs=`<div class="tabs2">${[['labores','Qué toca'],['tecnico','Técnico'],['tareas','Tareas'],['hechas','Hechas'],['trat','Tratamientos']].map(([k,t])=>`<button data-sub="campo:${k}" class="${s===k?'on':''}">${t}</button>`).join('')}</div>`;
+  if(s==='labores') return tabs+vLabores();
+  if(s==='tecnico'){ fab(null); return tabs+vTecnico(); }
   const h=hoy();
   if(s==='tareas'||s==='hechas'){
     const pend=s==='tareas';
@@ -1204,6 +1450,8 @@ function vMas(){
     <b>Avisos</b><div class="grid2">${inp('aviso_dias','Avisar tareas con (días)')}${inp('itv_dias','Avisar ITV/seguro con (días)')}</div>
     <p class="mut">Valores orientativos: revisa siempre la etiqueta del producto, que manda sobre esto.</p>
   </div>
+  <div class="card"><h2>Labores del calendario<span class="sp"></span><button class="btn sec sm" onclick="nuevaLabor()">+ Labor propia</button></h2><p class="mut">Desmarca las que no hagas (p. ej. tratamiento de suelo si llevas cubierta).</p>
+    ${[...LABORES,...(AJ.labores_propias||[]).map(p=>({...p,propia:1}))].map(L=>`<label class="chk"><input type="checkbox" data-labor="${L.id}" ${(AJ.labores_off||[]).includes(L.id)?'':'checked'}> ${esc(L.nombre)} <span class="mut">${L.meses?L.meses.map(m=>MESES[m]).join(', '):L.tras?'después de '+L.tras.fam:''}</span>${L.propia?` <button type="button" class="btn del sm" onclick="borrarLabor('${L.id}')">Quitar</button>`:''}</label>`).join('')}</div>
   <div class="row"><button class="btn" id="ajGuardar">Guardar ajustes</button><button class="btn sec" onclick="copia()">Descargar copia de seguridad</button><button class="btn sec" onclick="salir()">Cerrar sesión</button></div>
   <p class="creditos">Olivas · versión ${VERSION} (${VERSION_FECHA})<br>© 2026 Alfonso Carrascosa Martínez<br>Hecha con Claude, de Anthropic</p>`;
 }
@@ -1212,6 +1460,7 @@ function postMas(){
   b.onclick=()=>{
     AJ.cats=$('#ajCats').value.split('\n').map(s=>s.trim()).filter(Boolean);
     document.querySelectorAll('[data-umb]').forEach(i=>{ const v=pn(i.value); if(v!=null&&!isNaN(v)) AJ.umb[i.dataset.umb]=v; });
+    AJ.labores_off=[...document.querySelectorAll('[data-labor]')].filter(i=>!i.checked).map(i=>i.dataset.labor);
     METEO_CACHE={}; guardarAjustes();
   };
 }
@@ -1227,6 +1476,22 @@ function csv(k){
   else rows=[['Fecha','Finca','Producto','Nº registro','Dosis','Plaga/motivo','Superficie ha','Aplicador','Plazo seguridad días','Notas'], ...D.tratamientos.map(t=>[t.fecha,fincaNom(t.finca_id),t.producto,t.num_registro,t.dosis,t.motivo,n(t.superficie_ha),t.aplicador,t.plazo_seguridad_dias,t.notas])];
   bajar(`olivas_${k}_${CAMP.replace('/','-')}.csv`, '﻿'+rows.map(r=>r.map(q).join(sep)).join('\r\n'), 'text/csv;charset=utf-8');
 }
+function nuevaLabor(){
+  $('#frm').oninput=null; $('#frm').onchange=null;
+  $('#frm').innerHTML=`<h3>Labor propia</h3><label>Qué hay que hacer<input name="nombre" autocomplete="off"></label>
+    <span class="clab">Meses en que toca</span><div class="chips" id="lMes">${MESES.slice(1).map((m,i)=>`<button type="button" class="chip" data-m="${i+1}">${m}</button>`).join('')}</div>
+    <span class="clab">Tiempo</span><div class="chips" data-chips="tipo"><button type="button" class="chip on" data-val="">Da igual</button><button type="button" class="chip" data-val="olivo">Olivo seco</button><button type="button" class="chip" data-val="spray">Para curar</button></div><input type="hidden" name="tipo" value="">
+    <div class="row acciones" style="justify-content:flex-end"><button type="button" class="btn sec" id="fCancel">Cancelar</button><button class="btn" id="fOk">Guardar</button></div>`;
+  activarChips($('#frm')); $('#fCancel').onclick=()=>$('#dlg').close();
+  document.querySelectorAll('#lMes .chip').forEach(b=>b.onclick=()=>b.classList.toggle('on'));
+  $('#frm').onsubmit=async e=>{ e.preventDefault();
+    const nombre=$('#frm [name=nombre]').value.trim(), meses=[...document.querySelectorAll('#lMes .chip.on')].map(b=>+b.dataset.m);
+    if(!nombre||!meses.length){ toast('Pon qué hay que hacer y algún mes'); return; }
+    AJ.labores_propias=[...(AJ.labores_propias||[]),{id:'p_'+Date.now(),nombre,meses,tipo:$('#frm [name=tipo]').value||undefined}];
+    $('#dlg').close(); await guardarAjustes(); render(); };
+  $('#dlg').showModal(); setTimeout(()=>$('#frm [name=nombre]').focus(),50);
+}
+async function borrarLabor(id){ AJ.labores_propias=(AJ.labores_propias||[]).filter(x=>x.id!==id); await guardarAjustes(); render(); }
 function copia(){ bajar(`olivas_copia_${hoy()}.json`, JSON.stringify({version:1, fecha:new Date().toISOString(), ajustes:AJ, datos:D}, null, 1), 'application/json'); }
 function ics(){
   const ev=[]; const f=s=>s.replace(/-/g,''); const e=s=>String(s).replace(/[\\;,]/g,m=>'\\'+m).replace(/\n/g,'\\n');
