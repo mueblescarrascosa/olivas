@@ -58,7 +58,8 @@ label.chk{display:flex;gap:8px;align-items:center}label.chk input{width:auto}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 10px}
 dialog{border:0;border-radius:12px;padding:0;width:min(560px,94vw);max-height:92vh;overflow:auto;background:var(--card);color:var(--ink)}
 dialog::backdrop{background:rgba(0,0,0,.45)}
-dialog form{padding:16px}
+dialog form{padding:16px 16px 0}
+.acciones{position:sticky;bottom:0;background:var(--card);margin:6px -16px 0;padding:10px 16px calc(12px + env(safe-area-inset-bottom));border-top:1px solid var(--line);z-index:2}
 dialog h3{margin:0 0 12px}
 .creditos{font-size:12px;color:var(--mut);text-align:center;margin:18px 0 6px;line-height:1.5}
 #navCred{display:none}
@@ -104,11 +105,13 @@ details.adv{margin:4px 0 10px}details.adv summary{cursor:pointer;color:var(--olv
   th,td{padding:9px 10px}
   .fab{right:32px;bottom:32px}
   dialog{width:min(640px,90vw)}
-  dialog form{padding:22px 24px}
+  dialog form{padding:22px 24px 0}
+  .acciones{margin:8px -24px 0;padding:12px 24px 16px}
   #toast{bottom:40px}
   #navCred{display:block;margin-top:auto;font-size:11px;color:var(--mut);padding:10px 6px;line-height:1.45}
 }
 @media (min-width:1000px) and (prefers-color-scheme:dark){ nav button.on{background:rgba(155,181,95,.16)} }
+#toast .tdes{background:none;border:0;color:#c7d98f;font:inherit;font-weight:700;margin-left:10px;padding:4px 6px;cursor:pointer}
 #toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:#222;color:#fff;padding:8px 14px;border-radius:8px;z-index:20;font-size:14px}
 </style>
 </head>
@@ -146,7 +149,7 @@ details.adv{margin:4px 0 10px}details.adv summary{cursor:pointer;color:var(--olv
 
 <script>
 // ===== Configuración =====
-const VERSION = '1.0';
+const VERSION = '1.1';
 const VERSION_FECHA = '8 oct 2026';
 const CREDITOS = `Olivas v${VERSION} (${VERSION_FECHA}) · © 2026 Alfonso Carrascosa Martínez · Hecha con Claude (Anthropic)`;
 const SUPA_URL = 'https://kseyndjbmkaflpoqitsj.supabase.co';
@@ -188,7 +191,11 @@ function campDe(s){ const [y,m]=s.split('-').map(Number); const a = m>=10 ? y : 
 function campRango(c){ const a=parseInt(c); return [`${a}-10-01`,`${a+1}-09-30`]; }
 function fincaNom(id){ if(!id) return 'Común'; const f=D.fincas.find(x=>x.id===id); return f?f.nombre:'(borrada)'; }
 function maqNom(id){ const m=D.maquinas.find(x=>x.id===id); return m?m.nombre:''; }
-function toast(t){ const e=$('#toast'); e.textContent=t; e.classList.remove('hidden'); clearTimeout(toast._t); toast._t=setTimeout(()=>e.classList.add('hidden'),2500); }
+function toast(t, deshacer){
+  const e=$('#toast'); e.textContent=t; e.classList.remove('hidden'); clearTimeout(toast._t);
+  if(deshacer){ const b=document.createElement('button'); b.textContent='Deshacer'; b.className='tdes'; b.onclick=async()=>{ e.classList.add('hidden'); await deshacer(); }; e.append(' ',b); }
+  toast._t=setTimeout(()=>e.classList.add('hidden'), deshacer?6000:2500);
+}
 
 // ===== Autenticación =====
 async function arranque(){
@@ -305,7 +312,7 @@ const S = {
     {k:'umbral_hr',l:'Se moja con humedad desde (%)',t:'num',adv:1,help:'Vacío = el valor general. La app lo propone sola con los días perdidos.'},{k:'retraso_secado_h',l:'Retraso de secado (horas)',t:'num',adv:1,def:0,help:'Si esta finca tarda más en secarse que lo que calcula la app (umbría, junto a un arroyo…)'},{k:'municipio',l:'Municipio',adv:1},{k:'poligono_parcela',l:'Polígono / parcela',adv:1},{k:'ha',l:'Hectáreas',t:'num',adv:1},
     {k:'activa',l:'Activa',t:'bool',def:true,adv:1},{k:'notas',l:'Notas',t:'area',adv:1}]},
   maquinas:{tit:'Vehículo / máquina', f:()=>[
-    {k:'nombre',l:'Nombre',req:1,focus:1},{k:'itv_proxima',l:'Próxima ITV',t:'date'},{k:'seguro_vence',l:'Vence el seguro',t:'date'},
+    {k:'nombre',l:'Nombre',req:1,focus:1},{k:'itv_proxima',l:'Próxima ITV',t:'date',q:[['Pasada hoy: +1 año',365],['+2 años',730]]},{k:'seguro_vence',l:'Vence el seguro',t:'date',q:[['Renovado hoy: +1 año',365]]},
     {k:'tipo',l:'Tipo',t:'sel',ops:MAQ_TIPOS.map(x=>[x,x]),adv:1},{k:'matricula',l:'Matrícula',adv:1},
     {k:'fecha_compra',l:'Fecha de compra',t:'date',adv:1},{k:'precio_compra',l:'Precio de compra (€)',t:'num',adv:1},
     {k:'anos_amortizacion',l:'Años para amortizar',t:'int',adv:1,help:'0 = no amortizar. El coste anual se reparte como gasto común.'},
@@ -326,14 +333,15 @@ const S = {
     {k:'fecha',l:'Fecha de cobro',t:'date',def:hoy,req:1,adv:1},{k:'campana',l:'Campaña',def:()=>campDe(hoy()),req:1,adv:1,help:'Se pone sola según la fecha. Formato 2026/27'},
     {k:'notas',l:'Notas',t:'area',adv:1}]},
   tratamientos:{tit:'Tratamiento', f:()=>[
+    {k:'_prev',t:'html',nuevo:1,html:recientesTrat()},
     {k:'producto',l:'Producto',req:1,focus:1},{k:'finca_id',l:'Finca',t:'chips',ops:opsFincas(false).slice(1),def:()=>ULT.t_finca||D.fincas[0]?.id||''},
-    {k:'dosis',l:'Dosis'},{k:'fecha',l:'Fecha',t:'date',def:hoy,req:1},
+    {k:'dosis',l:'Dosis'},{k:'fecha',l:'Fecha',t:'date',def:hoy,req:1,q:[['Hoy',0],['Ayer',-1]]},
     {k:'plazo_seguridad_dias',l:'Plazo de seguridad (días)',t:'int',help:'Te avisa de no recoger antes'},
     {k:'repetir_dias',l:'Avisar para repetir en (días)',t:'int'},
     {k:'num_registro',l:'Nº de registro',adv:1},{k:'motivo',l:'Plaga / motivo',adv:1},
     {k:'superficie_ha',l:'Superficie tratada (ha)',t:'num',adv:1},{k:'aplicador',l:'Aplicador',adv:1},{k:'notas',l:'Notas',t:'area',adv:1}]},
   tareas:{tit:'Tarea', otro:1, f:()=>[
-    {k:'titulo',l:'Qué hay que hacer',req:1,focus:1},{k:'fecha',l:'Para cuándo',t:'date',def:hoy,req:1,q:QF},
+    {k:'titulo',l:'Qué hay que hacer',req:1,focus:1},{k:'_tit',t:'html',nuevo:1,html:recientesTareas()},{k:'fecha',l:'Para cuándo',t:'date',def:hoy,req:1,q:QF},
     {k:'finca_id',l:'Finca',t:'chips',ops:opsFincas(false)},
     {k:'tipo',l:'Tipo',t:'sel',ops:[['',''],...TAREA_TIPOS.map(x=>[x,x])],adv:1},
     {k:'repetir_dias',l:'Repetir cada (días)',t:'int',adv:1,help:'Al marcarla hecha se crea la siguiente'},
@@ -381,6 +389,14 @@ const S = {
     {k:'pagado',l:'Pagado',t:'bool'},{k:'notas',l:'Notas',t:'area',adv:1}]},
 };
 
+function recientesTrat(){
+  const vistos=new Set(), l=[]; D.tratamientos.forEach(t=>{ const k=(t.producto||'').toLowerCase(); if(k&&!vistos.has(k)&&l.length<6){ vistos.add(k); l.push(t); } });
+  return l.length?`<span class="clab">Repetir uno anterior</span><div class="chips">${l.map(t=>`<button type="button" class="chip" data-rtrat="${t.id}">${esc(t.producto)}</button>`).join('')}</div>`:'';
+}
+function recientesTareas(){
+  const vistos=new Set(), l=[]; [...D.tareas].sort((a,b)=>(b.created_at||'').localeCompare(a.created_at||'')).forEach(t=>{ const k=t.titulo.toLowerCase(); if(!vistos.has(k)&&l.length<6){ vistos.add(k); l.push(t.titulo); } });
+  return l.length?`<div class="chips" style="margin-top:-6px">${l.map(t=>`<button type="button" class="chip" data-rtit="${esc(t)}">${esc(t)}</button>`).join('')}</div>`:'';
+}
 function campoHtml(c, v, reg){
   const lab = esc(c.l) + (c.req?' *':'');
   const help = c.help?`<span class="mut" style="display:block">${esc(c.help)}</span>`:'';
@@ -410,7 +426,7 @@ function abrir(k, reg=null, ini=null){
   const norm = campos.filter(c=>!c.adv).map(c=>campoHtml(c,val(c),reg)).join('');
   const adv = campos.filter(c=>c.adv).map(c=>campoHtml(c,val(c),reg)).join('');
   $('#frm').innerHTML = `<h3>${reg?'Editar':'Nuevo'}: ${esc(def.tit)}</h3>${norm}${adv?`<details class="adv" ${reg?'open':''}><summary>Más detalles</summary>${adv}</details>`:''}
-    <div class="row" style="justify-content:space-between;margin-top:6px">
+    <div class="row acciones" style="justify-content:space-between">
       <div>${reg?'<button type="button" class="btn del" id="fDel">Borrar</button>':''}</div>
       <div class="row"><button type="button" class="btn sec" id="fCancel">Cancelar</button>${!reg&&def.otro?'<button type="button" class="btn sec" id="fOtro">Guardar y otro</button>':''}<button class="btn" id="fOk">Guardar</button></div>
     </div>`;
@@ -432,6 +448,12 @@ function abrir(k, reg=null, ini=null){
     $('[name=kilos]').addEventListener('input',calc); $('[name=precio_kg]').addEventListener('input',calc);
     $('[name=fecha]').addEventListener('change',e=>{ if(e.target.value) $('[name=campana]').value=campDe(e.target.value); });
   }
+  if(k==='tratamientos') document.querySelectorAll('#frm [data-rtrat]').forEach(b=>b.onclick=()=>{
+    const t=D.tratamientos.find(x=>x.id===b.dataset.rtrat); if(!t) return;
+    ['producto','dosis','num_registro','motivo','plazo_seguridad_dias','repetir_dias','aplicador'].forEach(n=>{ const el=$(`#frm [name=${n}]`); if(el) el.value=t[n]??''; });
+    const fb=$(`#frm [data-chips=finca_id] .chip[data-val="${t.finca_id||''}"]`); if(fb) fb.click();
+    document.querySelectorAll('#frm [data-rtrat]').forEach(x=>x.classList.toggle('on',x===b)); });
+  if(k==='tareas') document.querySelectorAll('#frm [data-rtit]').forEach(b=>b.onclick=()=>{ $('#frm [name=titulo]').value=b.dataset.rtit; const t=D.tareas.find(x=>x.titulo===b.dataset.rtit); if(t){ const fb=$(`#frm [data-chips=finca_id] .chip[data-val="${t.finca_id||''}"]`); if(fb) fb.click(); } });
   if(k==='servicios'){
     const calc=()=>{ const e=empresa($('[name=empresa_id]').value), kg=pn($('[name=kilos]').value); if(e&&kg) $('[name=importe]').value=String(Math.round(conIva(kg*e.precio,e)*100)/100).replace('.',','); };
     $('[name=kilos]').addEventListener('input',calc); $('[name=empresa_id]').addEventListener('change',calc);
@@ -516,8 +538,11 @@ async function marcarHecha(id){
   const t=D.tareas.find(x=>x.id===id);
   const {error}=await sb.from('olv_tareas').update({hecha:true,hecha_fecha:hoy()}).eq('id',id);
   if(error){ if(!sinRed(error)) toast('Error: '+error.message); return; }
+  const antes=new Set(D.tareas.map(x=>x.id));
   if(t.repetir_dias>0) await repetirTarea(t);
-  await cargar('tareas'); render(); toast('Hecha');
+  const nueva=D.tareas.find(x=>!antes.has(x.id));
+  await cargar('tareas'); render();
+  toast('Hecha', async()=>{ await sb.from('olv_tareas').update({hecha:false,hecha_fecha:null}).eq('id',id); if(nueva) await sb.from('olv_tareas').delete().eq('id',nueva.id); await cargar('tareas'); render(); });
 }
 
 // ===== Cálculo de la campaña =====
@@ -627,7 +652,7 @@ function abrirParte(){
     <label>Día<input type="date" name="fecha" value="${hoy()}"></label>
     <div class="chips" style="margin-top:-6px"><button type="button" class="chip" data-qf="fecha" data-n="0">Hoy</button><button type="button" class="chip" data-qf="fecha" data-n="-1">Ayer</button></div>
     <p id="pRes" class="mut"></p>
-    <div class="row" style="justify-content:flex-end"><button type="button" class="btn sec" id="fCancel">Cancelar</button><button class="btn" id="fOk">Guardar</button></div>`;
+    <div class="row acciones" style="justify-content:flex-end"><button type="button" class="btn sec" id="fCancel">Cancelar</button><button class="btn" id="fOk">Guardar</button></div>`;
   const F=$('#frm'); activarChips(F);
   const horasDe=t=>{ const m=F.modo.value; const j=horasJornada(t); return m==='J'?j:m==='M'?j/2:(pn(F.horas.value)||0); };
   const marcados=()=>[...F.querySelectorAll('.pTrab .chip.on[data-id]')].map(b=>b.dataset.id);
@@ -673,12 +698,16 @@ async function pagar(clave){
   if(COLA.length){ toast('Primero tienen que subirse los apuntes pendientes'); vaciarCola(); return; }
   const deuda=pendientes()[clave]||0; const [tipo,id]=clave.split(':');
   const nom = tipo==='e'?empNom(id):trabNom(id);
-  if(!confirm(`¿Marcar como pagado todo lo de ${nom}? (${eur(deuda)})`)) return;
+  const ids=D.jornales.filter(j=>!j.pagado&&claveDeuda(j)===clave).map(j=>j.id), sids=tipo==='e'?D.servicios.filter(x=>!x.pagado&&x.empresa_id===id).map(x=>x.id):[];
   const upd={pagado:true,pagado_fecha:hoy()}; let r;
   if(tipo==='t') r=await sb.from('olv_jornales').update(upd).eq('trabajador_id',id).eq('pagado',false).is('empresa_id',null);
   else { r=await sb.from('olv_jornales').update(upd).eq('empresa_id',id).eq('pagado',false); if(!r.error) r=await sb.from('olv_servicios').update(upd).eq('empresa_id',id).eq('pagado',false); }
   if(r.error){ if(!sinRed(r.error)) toast('Error: '+r.error.message); return; }
-  await Promise.all([cargar('jornales'),cargar('servicios')]); render(); toast(`Pagado ${eur(deuda)} a ${nom}`);
+  await Promise.all([cargar('jornales'),cargar('servicios')]); render();
+  toast(`Pagado ${eur(deuda)} a ${nom}`, async()=>{ const no={pagado:false,pagado_fecha:null};
+    for(const i of ids) await sb.from('olv_jornales').update(no).eq('id',i);
+    for(const i of sids) await sb.from('olv_servicios').update(no).eq('id',i);
+    await Promise.all([cargar('jornales'),cargar('servicios')]); render(); });
 }
 function vJornales(){
   const s=SUB.jornales||'libreta';
@@ -768,7 +797,7 @@ function revisarFactura(d, blob, mime, ia){
     <div id="fSinLin" class="${L.length?'hidden':''}"><label>Categoría<select name="k_unica">${cats.map(c=>`<option>${esc(c)}</option>`).join('')}</select></label></div>
     <details class="adv"><summary>Más detalles</summary><div class="grid2"><label>Nº factura<input name="numero" value="${esc(d.numero||'')}"></label><label>CIF<input name="cif" value="${esc(d.cif||'')}"></label><label>Base imponible<input name="base" inputmode="decimal" value="${fmt(d.base)}"></label><label>IVA<input name="iva" inputmode="decimal" value="${fmt(d.iva)}"></label></div></details>
     <p id="fRes" class="mut"></p>
-    <div class="row" style="justify-content:flex-end"><button type="button" class="btn sec" id="fCancel">Cancelar</button><button class="btn" id="fOk">Guardar</button></div>`;
+    <div class="row acciones" style="justify-content:flex-end"><button type="button" class="btn sec" id="fCancel">Cancelar</button><button class="btn" id="fOk">Guardar</button></div>`;
   const F=$('#frm'); activarChips(F);
   const vivas=()=>[...F.querySelectorAll('[data-l]')].map(el=>+el.dataset.l);
   const reparto=()=>{
@@ -815,7 +844,7 @@ async function verFactura(id){
     <div id="fFoto" class="mut">Cargando foto…</div>
     ${ls.length?`<table style="margin-top:8px">${ls.map(l=>`<tr><td>${esc(l.producto)}<div class="mut">${esc(l.categoria||'')}</div></td><td class="n">${l.cantidad!=null?num(l.cantidad,2)+' '+esc(l.unidad||''):''}<div class="mut">${l.precio_unitario!=null?eur(l.precio_unitario)+'/ud':''}</div></td><td class="n">${eur(l.importe)}</td></tr>`).join('')}</table>`:''}
     <p class="mut">Gastos apuntados: ${gs.map(g=>`${esc(g.categoria)} ${eur(g.importe)}`).join(' · ')||'ninguno'}</p>
-    <div class="row" style="justify-content:space-between"><button type="button" class="btn del" id="fBorrar">Borrar factura</button><button type="button" class="btn" onclick="$('#dlg').close()">Cerrar</button></div>`;
+    <div class="row acciones" style="justify-content:space-between"><button type="button" class="btn del" id="fBorrar">Borrar factura</button><button type="button" class="btn" onclick="$('#dlg').close()">Cerrar</button></div>`;
   $('#dlg').showModal();
   $('#fBorrar').onclick=async()=>{
     if(!confirm('¿Borrar la factura, su foto y los gastos que se apuntaron con ella?')) return;
@@ -870,7 +899,8 @@ function cuotaEstimada(c){ return Math.round(fincasDe(c.id).reduce((a,f)=>a+oliv
 async function pagarRecibo(id){
   const {error}=await sb.from('olv_riego_pagos').update({pagado:true,pagado_fecha:hoy()}).eq('id',id);
   if(error){ if(!sinRed(error)) toast('Error: '+error.message); return; }
-  await cargar('riego_pagos'); render(); toast('Recibo pagado');
+  await cargar('riego_pagos'); render();
+  toast('Recibo pagado', async()=>{ await sb.from('olv_riego_pagos').update({pagado:false,pagado_fecha:null}).eq('id',id); await cargar('riego_pagos'); render(); });
 }
 function vRiego(){
   const [ini,fin]=campRango(CAMP);
@@ -1141,10 +1171,10 @@ async function postInicio(){
   const msgs=[];
   await Promise.all(fincas.map(async f=>{ try{
     const ev=evaluarTiempo(await getMeteo(f),f);
-    dias.forEach(fe=>{ const d=ev.find(x=>x.fecha===fe); if(!d) return; const m=d.work.c!=='g'?d.work:d.ace; if(m.c!=='g') msgs.push({c:m.c==='r'?'bad':'', t:`${fe===hoy()?'Hoy':'Mañana'} en <b>${esc(f.nombre)}</b>: ${esc(m.txt)}${m===d.ace?' (aceituna)':''}`, ord:fe}); });
+    dias.forEach(fe=>{ const d=ev.find(x=>x.fecha===fe); if(!d) return; const m=d.work.c!=='g'?d.work:d.ace; if(m.c!=='g') msgs.push({c:m.c==='r'?'bad':'', t:`${fe===hoy()?'Hoy':'Mañana'} en <b>${esc(f.nombre)}</b>: ${esc(m.txt)}${m===d.ace?' (aceituna)':''}`, ord:fe, f:f.id, fe}); });
   }catch(e){} }));
   if(!$('#avMeteo')) return;
-  $('#avMeteo').innerHTML=msgs.sort((a,b)=>a.ord.localeCompare(b.ord)).map(m=>`<div class="aviso ${m.c}" style="cursor:pointer" onclick="ir('tiempo')">${m.t}</div>`).join('');
+  $('#avMeteo').innerHTML=msgs.sort((a,b)=>a.ord.localeCompare(b.ord)).map(m=>`<div class="aviso ${m.c}" style="cursor:pointer" onclick="SUB.tiempo='${m.f}';SUB.tDia='${m.fe}';ir('tiempo')">${m.t}</div>`).join('');
 }
 
 // ===== Más: fincas, maquinaria, ajustes =====
@@ -1209,6 +1239,8 @@ function ics(){
 
 $('#lgCred').innerHTML = `Olivas v${VERSION}<br>© 2026 Alfonso Carrascosa Martínez · Hecha con Claude (Anthropic)`;
 $('#navCred').innerHTML = `Olivas v${VERSION} · ${VERSION_FECHA}<br>© 2026 Alfonso Carrascosa Martínez<br>Hecha con Claude (Anthropic)`;
+// Tocar fuera del formulario lo cierra (salvo mientras guarda)
+$('#dlg').addEventListener('click', e=>{ if(e.target===$('#dlg') && !$('#fOk')?.disabled) $('#dlg').close(); });
 arranque();
 </script>
 </body>
