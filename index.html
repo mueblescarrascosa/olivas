@@ -1,0 +1,585 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#4b5d2a">
+<title>Olivas</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<style>
+:root{--bg:#f6f5ef;--card:#fff;--ink:#22261c;--mut:#6b7060;--line:#e2e0d4;--olv:#4b5d2a;--olv2:#6f8a3c;--ok:#2f8a3e;--warn:#c58a0b;--bad:#c0392b;--sh:0 1px 3px rgba(0,0,0,.08)}
+@media (prefers-color-scheme:dark){:root{--bg:#171a13;--card:#21251b;--ink:#ecebe3;--mut:#a3a796;--line:#353a2c;--olv:#9bb55f;--olv2:#b5cc7c;--sh:none}}
+*{box-sizing:border-box}
+body{margin:0;font:15px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--ink);padding-bottom:80px}
+header{position:sticky;top:0;z-index:5;background:var(--olv);color:#fff;padding:10px 16px;display:flex;align-items:center;gap:10px}
+@media (prefers-color-scheme:dark){header{color:#171a13}}
+header h1{font-size:18px;margin:0;flex:1}
+header select{background:transparent;color:inherit;border:1px solid currentColor;border-radius:6px;padding:4px 6px;font:inherit}
+header select option{color:#000}
+main{max-width:900px;margin:0 auto;padding:12px 16px}
+nav{position:fixed;bottom:0;left:0;right:0;background:var(--card);border-top:1px solid var(--line);display:flex;z-index:6;padding-bottom:env(safe-area-inset-bottom)}
+nav button{flex:1;border:0;background:none;color:var(--mut);padding:10px 2px;font:12px system-ui;cursor:pointer}
+nav button.on{color:var(--olv);font-weight:700;box-shadow:inset 0 3px 0 var(--olv)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin:0 0 12px;box-shadow:var(--sh)}
+.card h2{font-size:16px;margin:0 0 8px;display:flex;align-items:center;gap:8px}
+.card h2 .sp{flex:1}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:12px}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.kpi b{display:block;font-size:20px}
+.kpi span{color:var(--mut);font-size:12px}
+.pos{color:var(--ok)}.neg{color:var(--bad)}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{padding:7px 6px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+th{color:var(--mut);font-weight:600;font-size:12px}
+td.n,th.n{text-align:right;white-space:nowrap}
+tr.click{cursor:pointer}tr.click:hover{background:rgba(127,127,100,.08)}
+.scroll{overflow-x:auto}
+.btn{border:1px solid var(--olv);background:var(--olv);color:#fff;border-radius:8px;padding:8px 12px;font:inherit;cursor:pointer}
+@media (prefers-color-scheme:dark){.btn{color:#171a13}}
+.btn.sec{background:transparent;color:var(--olv)}
+.btn.del{background:transparent;color:var(--bad);border-color:var(--bad)}
+.btn.sm{padding:4px 8px;font-size:13px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.mut{color:var(--mut);font-size:13px}
+.tag{display:inline-block;padding:1px 7px;border-radius:10px;font-size:12px;background:var(--line);color:var(--ink)}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px;vertical-align:middle}
+.g{background:var(--ok)}.a{background:var(--warn)}.r{background:var(--bad)}
+.aviso{padding:8px 10px;border-left:4px solid var(--warn);background:rgba(197,138,11,.08);border-radius:6px;margin-bottom:6px}
+.aviso.bad{border-color:var(--bad);background:rgba(192,57,43,.08)}
+.aviso.ok{border-color:var(--ok);background:rgba(47,138,62,.08)}
+input,select,textarea{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:7px;padding:8px;width:100%}
+label{display:block;margin-bottom:10px;font-size:13px;color:var(--mut)}
+label>input,label>select,label>textarea{margin-top:3px}
+label.chk{display:flex;gap:8px;align-items:center}label.chk input{width:auto}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 10px}
+dialog{border:0;border-radius:12px;padding:0;width:min(560px,94vw);background:var(--card);color:var(--ink)}
+dialog::backdrop{background:rgba(0,0,0,.45)}
+dialog form{padding:16px}
+dialog h3{margin:0 0 12px}
+.fab{position:fixed;right:16px;bottom:76px;width:54px;height:54px;border-radius:50%;font-size:28px;line-height:1;z-index:7;box-shadow:0 3px 10px rgba(0,0,0,.25)}
+#login{max-width:360px;margin:12vh auto;padding:0 16px}
+.hidden{display:none!important}
+.bar{min-width:60px;height:8px;background:var(--line);border-radius:4px;overflow:hidden}.bar i{display:block;height:100%;background:var(--olv2)}
+.tabs2{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap}
+.tabs2 button{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:16px;padding:5px 12px;font:inherit;font-size:13px;cursor:pointer}
+.tabs2 button.on{background:var(--olv);color:#fff;border-color:var(--olv)}
+@media (max-width:420px){th,td{padding:6px 3px;font-size:13px}main{padding:10px 10px}}
+#toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:#222;color:#fff;padding:8px 14px;border-radius:8px;z-index:20;font-size:14px}
+</style>
+</head>
+<body>
+
+<div id="login" class="hidden">
+  <div class="card">
+    <h2>Olivas</h2>
+    <p class="mut">Entra con tu correo. La primera vez pulsa «Crear cuenta».</p>
+    <label>Correo<input id="lg_email" type="email" autocomplete="username"></label>
+    <label>Contraseña<input id="lg_pass" type="password" autocomplete="current-password"></label>
+    <div class="row"><button class="btn" id="lg_in">Entrar</button><button class="btn sec" id="lg_up">Crear cuenta</button></div>
+    <p class="mut" id="lg_msg"></p>
+  </div>
+</div>
+
+<div id="app" class="hidden">
+  <header><h1>Olivas</h1><select id="selCamp" title="Campaña"></select></header>
+  <main id="view"></main>
+  <button class="btn fab hidden" id="fab">+</button>
+  <nav id="nav">
+    <button data-v="inicio">Inicio</button>
+    <button data-v="gastos">Gastos</button>
+    <button data-v="ingresos">Ingresos</button>
+    <button data-v="campo">Campo</button>
+    <button data-v="tiempo">Tiempo</button>
+    <button data-v="mas">Más</button>
+  </nav>
+</div>
+
+<dialog id="dlg"><form id="frm" method="dialog"></form></dialog>
+<div id="toast" class="hidden"></div>
+
+<script>
+// ===== Configuración =====
+const SUPA_URL = 'https://kseyndjbmkaflpoqitsj.supabase.co';
+const SUPA_KEY = 'sb_publishable_CbwajQX7DgAoK3fV6GVU5g_18CWeqMG';
+const sb = supabase.createClient(SUPA_URL, SUPA_KEY);
+
+const CATS_DEF = ['Gasoil / gasolina','Personal (jornales)','Seguros sociales','Averías y reparaciones','Mantenimiento maquinaria','Fitosanitarios','Abonos','EPIs','Herramientas','Seguros','IBI / impuestos','Cuotas cooperativa','Transporte','Otros'];
+const ING_TIPOS = ['Liquidación','Anticipo','Liquidación complementaria','Ayuda PAC','Compensación IVA (REAGP)','Otros'];
+const TAREA_TIPOS = ['Poda','Curar / tratamiento','Abonado','Desvareto','Herbicida / suelo','Recogida','Riego','Mantenimiento','Papeles / trámites','Otra'];
+const MAQ_TIPOS = ['Tractor','Coche / todoterreno','Remolque','Atomizador','Vibrador / vareadora','Desbrozadora','Motosierra','Otra'];
+const UMB_DEF = {
+  spray_vmin:2, spray_vmax:10, spray_rmax:20, spray_tmin:5, spray_tmax:28, spray_hrmin:40, spray_pmax:30, spray_horas_lluvia:4, spray_min_horas:3,
+  work_tmax:35, work_rmax:50, work_lluvia:1,
+  ace_lluvia_ayer:5, ace_lluvia_ayer_max:15,
+  aviso_dias:7, itv_dias:30
+};
+
+// ===== Estado =====
+let D = {fincas:[],maquinas:[],gastos:[],ingresos:[],tratamientos:[],tareas:[]};
+let AJ = {cats:CATS_DEF.slice(), umb:{...UMB_DEF}};
+let VIEW = 'inicio', SUB = {};
+let CAMP = campDe(hoy());
+
+// ===== Utilidades =====
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const eur = n => (Number(n)||0).toLocaleString('es-ES',{style:'currency',currency:'EUR'});
+const num = (n,d=0) => (Number(n)||0).toLocaleString('es-ES',{maximumFractionDigits:d,minimumFractionDigits:d});
+function hoy(){ const d=new Date(); return iso(d); }
+function iso(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function addDias(s,n){ const [y,m,d]=s.split('-').map(Number); return iso(new Date(y,m-1,d+n)); }
+function difDias(a,b){ const p=s=>{const [y,m,d]=s.split('-').map(Number);return Date.UTC(y,m-1,d)}; return Math.round((p(b)-p(a))/864e5); }
+function fFecha(s){ if(!s) return ''; const [y,m,d]=s.split('-'); return `${d}/${m}/${y.slice(2)}`; }
+function campDe(s){ const [y,m]=s.split('-').map(Number); const a = m>=10 ? y : y-1; return `${a}/${String(a+1).slice(2)}`; }
+function campRango(c){ const a=parseInt(c); return [`${a}-10-01`,`${a+1}-09-30`]; }
+function fincaNom(id){ if(!id) return 'Común'; const f=D.fincas.find(x=>x.id===id); return f?f.nombre:'(borrada)'; }
+function maqNom(id){ const m=D.maquinas.find(x=>x.id===id); return m?m.nombre:''; }
+function toast(t){ const e=$('#toast'); e.textContent=t; e.classList.remove('hidden'); clearTimeout(toast._t); toast._t=setTimeout(()=>e.classList.add('hidden'),2500); }
+
+// ===== Autenticación =====
+async function arranque(){
+  const {data:{session}} = await sb.auth.getSession();
+  if(session) entrar(); else { $('#login').classList.remove('hidden'); }
+}
+$('#lg_in').onclick = async () => {
+  $('#lg_msg').textContent='Entrando…';
+  const {error} = await sb.auth.signInWithPassword({email:$('#lg_email').value.trim(), password:$('#lg_pass').value});
+  if(error){ $('#lg_msg').textContent = error.message.includes('confirm') ? 'Confirma primero el correo que te ha llegado.' : 'Correo o contraseña incorrectos.'; return; }
+  entrar();
+};
+$('#lg_up').onclick = async () => {
+  const p=$('#lg_pass').value; if(p.length<8){ $('#lg_msg').textContent='La contraseña necesita al menos 8 caracteres.'; return; }
+  const {data,error} = await sb.auth.signUp({email:$('#lg_email').value.trim(), password:p});
+  if(error){ $('#lg_msg').textContent=error.message; return; }
+  if(data.session) entrar(); else $('#lg_msg').textContent='Cuenta creada. Revisa tu correo para confirmarla y luego entra.';
+};
+async function entrar(){
+  $('#login').classList.add('hidden'); $('#app').classList.remove('hidden');
+  await cargarTodo();
+  ir('inicio');
+}
+async function salir(){ await sb.auth.signOut(); location.reload(); }
+
+// ===== Datos =====
+async function cargar(k){
+  const ord = {fincas:'nombre',maquinas:'nombre',gastos:'fecha',ingresos:'fecha',tratamientos:'fecha',tareas:'fecha'}[k];
+  const {data,error} = await sb.from('olv_'+k).select('*').order(ord,{ascending:!['gastos','ingresos','tratamientos'].includes(k)});
+  if(error){ toast('Error cargando '+k+': '+error.message); return; }
+  D[k]=data;
+}
+async function cargarTodo(){
+  await Promise.all(Object.keys(D).map(cargar));
+  const {data} = await sb.from('olv_ajustes').select('datos').maybeSingle();
+  if(data && data.datos){ AJ.cats = data.datos.cats?.length ? data.datos.cats : CATS_DEF.slice(); AJ.umb = {...UMB_DEF, ...(data.datos.umb||{})}; }
+  pintarCampanas();
+}
+async function guardarAjustes(){
+  const {data:{user}} = await sb.auth.getUser();
+  const {error} = await sb.from('olv_ajustes').upsert({user_id:user.id, datos:AJ, updated_at:new Date().toISOString()});
+  toast(error ? 'Error: '+error.message : 'Ajustes guardados');
+}
+function pintarCampanas(){
+  const set = new Set([campDe(hoy())]);
+  D.gastos.forEach(g=>set.add(campDe(g.fecha)));
+  D.ingresos.forEach(i=>set.add(i.campana));
+  const lista=[...set].sort().reverse();
+  if(!lista.includes(CAMP)) CAMP=lista[0];
+  $('#selCamp').innerHTML = lista.map(c=>`<option ${c===CAMP?'selected':''}>${c}</option>`).join('');
+}
+$('#selCamp').onchange = e => { CAMP=e.target.value; render(); };
+
+// ===== Formularios genéricos =====
+const opsFincas = (conComun=true) => [...(conComun?[['','Común (se reparte)']]:[['','—']]), ...D.fincas.filter(f=>f.activa).map(f=>[f.id,f.nombre])];
+const opsMaq = () => [['','—'], ...D.maquinas.map(m=>[m.id,m.nombre])];
+const S = {
+  fincas:{tit:'Finca', f:()=>[
+    {k:'nombre',l:'Nombre',req:1},{k:'municipio',l:'Municipio'},{k:'poligono_parcela',l:'Polígono / parcela'},
+    {k:'olivos',l:'Nº de olivos',t:'int',req:1,help:'Se usa para repartir gastos comunes'},{k:'ha',l:'Hectáreas',t:'num'},
+    {k:'lat',l:'Latitud',t:'coord'},{k:'lon',l:'Longitud',t:'coord'},
+    {k:'_geo',t:'html',html:'<div class="row" style="margin-bottom:10px"><button type="button" class="btn sec sm" id="btnGeo">Usar mi ubicación</button><span class="mut">o pega «lat, lon» de Google Maps en Latitud</span></div>'},
+    {k:'activa',l:'Activa',t:'bool',def:true},{k:'notas',l:'Notas',t:'area'}]},
+  maquinas:{tit:'Vehículo / máquina', f:()=>[
+    {k:'nombre',l:'Nombre',req:1},{k:'tipo',l:'Tipo',t:'sel',ops:MAQ_TIPOS.map(x=>[x,x])},{k:'matricula',l:'Matrícula'},
+    {k:'itv_proxima',l:'Próxima ITV',t:'date'},{k:'seguro_vence',l:'Vence el seguro',t:'date'},
+    {k:'fecha_compra',l:'Fecha de compra',t:'date'},{k:'precio_compra',l:'Precio de compra (€)',t:'num'},
+    {k:'anos_amortizacion',l:'Años para amortizar',t:'int',help:'0 = no amortizar. El coste anual se reparte como gasto común.'},
+    {k:'activa',l:'En uso',t:'bool',def:true},{k:'notas',l:'Notas',t:'area'}]},
+  gastos:{tit:'Gasto', f:()=>[
+    {k:'fecha',l:'Fecha',t:'date',def:hoy(),req:1},{k:'importe',l:'Importe (€)',t:'num',req:1},
+    {k:'categoria',l:'Categoría',t:'sel',ops:AJ.cats.map(x=>[x,x]),req:1},{k:'concepto',l:'Concepto'},
+    {k:'finca_id',l:'Finca',t:'sel',ops:opsFincas()},{k:'maquina_id',l:'Vehículo / máquina',t:'sel',ops:opsMaq()},
+    {k:'proveedor',l:'Proveedor'},{k:'notas',l:'Notas',t:'area'}]},
+  ingresos:{tit:'Ingreso', f:()=>[
+    {k:'fecha',l:'Fecha de cobro',t:'date',def:hoy(),req:1},{k:'campana',l:'Campaña',def:CAMP,req:1,help:'Formato 2026/27'},
+    {k:'tipo',l:'Tipo',t:'sel',ops:ING_TIPOS.map(x=>[x,x]),req:1},{k:'finca_id',l:'Finca',t:'sel',ops:opsFincas()},
+    {k:'kilos',l:'Kilos de aceituna',t:'num'},{k:'rendimiento',l:'Rendimiento (%)',t:'num'},{k:'precio_kg',l:'Precio €/kg aceituna',t:'num'},
+    {k:'importe',l:'Importe cobrado (€)',t:'num',req:1,help:'Se calcula con kilos × precio, pero puedes cambiarlo'},{k:'notas',l:'Notas',t:'area'}]},
+  tratamientos:{tit:'Tratamiento', f:()=>[
+    {k:'fecha',l:'Fecha',t:'date',def:hoy(),req:1},{k:'finca_id',l:'Finca',t:'sel',ops:opsFincas(false)},
+    {k:'producto',l:'Producto',req:1},{k:'num_registro',l:'Nº de registro'},{k:'dosis',l:'Dosis'},{k:'motivo',l:'Plaga / motivo'},
+    {k:'superficie_ha',l:'Superficie tratada (ha)',t:'num'},{k:'aplicador',l:'Aplicador'},
+    {k:'plazo_seguridad_dias',l:'Plazo de seguridad (días)',t:'int',help:'No recoger antes de que pase'},
+    {k:'repetir_dias',l:'Avisar para repetir en (días)',t:'int',help:'Crea una tarea automática'},{k:'notas',l:'Notas',t:'area'}]},
+  tareas:{tit:'Tarea', f:()=>[
+    {k:'titulo',l:'Qué hay que hacer',req:1},{k:'fecha',l:'Para cuándo',t:'date',def:hoy(),req:1},
+    {k:'tipo',l:'Tipo',t:'sel',ops:TAREA_TIPOS.map(x=>[x,x])},{k:'finca_id',l:'Finca',t:'sel',ops:opsFincas(false)},
+    {k:'repetir_dias',l:'Repetir cada (días)',t:'int',help:'Al marcarla hecha se crea la siguiente'},
+    {k:'hecha',l:'Hecha',t:'bool'},{k:'notas',l:'Notas',t:'area'}]},
+};
+
+function abrir(k, reg=null){
+  const def = S[k]; const r = reg || {};
+  const campos = def.f().map(c=>{
+    let v = r[c.k] ?? (reg?'':c.def ?? '');
+    const lab = esc(c.l) + (c.req?' *':'');
+    const help = c.help?`<span class="mut" style="display:block">${esc(c.help)}</span>`:'';
+    switch(c.t){
+      case 'html': return c.html;
+      case 'bool': return `<label class="chk"><input type="checkbox" name="${c.k}" ${(reg? r[c.k] : c.def)?'checked':''}> ${lab}</label>`;
+      case 'area': return `<label>${lab}<textarea name="${c.k}" rows="2">${esc(v)}</textarea></label>`;
+      case 'sel': return `<label>${lab}<select name="${c.k}">${c.ops.map(([val,t])=>`<option value="${esc(val)}" ${String(v)===String(val)?'selected':''}>${esc(t)}</option>`).join('')}</select>${help}</label>`;
+      case 'date': return `<label>${lab}<input type="date" name="${c.k}" value="${esc(v)}" ${c.req?'required':''}></label>`;
+      case 'num': case 'int': case 'coord': return `<label>${lab}<input name="${c.k}" inputmode="decimal" value="${esc(v)}" ${c.req?'required':''}>${help}</label>`;
+      default: return `<label>${lab}<input name="${c.k}" value="${esc(v)}" ${c.req?'required':''}>${help}</label>`;
+    }
+  }).join('');
+  $('#frm').innerHTML = `<h3>${reg?'Editar':'Nuevo'}: ${esc(def.tit)}</h3>${campos}
+    <div class="row" style="justify-content:space-between;margin-top:6px">
+      <div>${reg?'<button type="button" class="btn del" id="fDel">Borrar</button>':''}</div>
+      <div class="row"><button type="button" class="btn sec" id="fCancel">Cancelar</button><button class="btn" id="fOk">Guardar</button></div>
+    </div>`;
+  $('#fCancel').onclick = ()=>$('#dlg').close();
+  if(reg) $('#fDel').onclick = ()=>borrar(k, reg.id);
+  $('#frm').onsubmit = e => { e.preventDefault(); guardar(k, reg); };
+  // comportamientos especiales
+  if(k==='fincas'){
+    $('#btnGeo').onclick = ()=> navigator.geolocation ? navigator.geolocation.getCurrentPosition(p=>{ $('[name=lat]').value=p.coords.latitude.toFixed(6); $('[name=lon]').value=p.coords.longitude.toFixed(6); }, ()=>toast('No se pudo obtener la ubicación')) : toast('Sin geolocalización');
+    $('[name=lat]').addEventListener('input', e=>{ const m=e.target.value.match(/(-?\d+[.,]\d+)\s*[,; ]\s*(-?\d+[.,]\d+)/); if(m){ e.target.value=m[1].replace(',','.'); $('[name=lon]').value=m[2].replace(',','.'); } });
+  }
+  if(k==='ingresos'){
+    const calc=()=>{ const kg=pn($('[name=kilos]').value), p=pn($('[name=precio_kg]').value); if(kg&&p) $('[name=importe]').value=(kg*p).toFixed(2); };
+    $('[name=kilos]').addEventListener('input',calc); $('[name=precio_kg]').addEventListener('input',calc);
+  }
+  $('#dlg').showModal();
+}
+function pn(s,miles=true){ if(s===''||s==null) return null; s=String(s).trim().replace(/\s/g,''); if(s===''){return null;}
+  if(s.includes(',')) s=s.replace(/\./g,'').replace(',','.');
+  else if(miles && /^-?\d{1,3}(\.\d{3})+$/.test(s)) s=s.replace(/\./g,''); // 1.000 -> 1000
+  const n=Number(s); return isNaN(n)?NaN:n; }
+
+async function guardar(k, reg){
+  const fd = new FormData($('#frm')); const obj={};
+  for(const c of S[k].f()){
+    if(c.t==='html') continue;
+    if(c.t==='bool'){ obj[c.k] = fd.get(c.k)==='on'; continue; }
+    let v = fd.get(c.k);
+    if(c.t==='num'||c.t==='int'||c.t==='coord'){ v=pn(v,c.t!=='coord'); if(Number.isNaN(v)){ toast(`«${c.l}» no es un número`); return; } if(c.t==='int'&&v!=null) v=Math.round(v); }
+    else if(v==='') v=null;
+    if(c.req && (v==null)){ toast(`Falta «${c.l}»`); return; }
+    obj[c.k]=v;
+  }
+  if(k==='ingresos' && !/^\d{4}\/\d{2}$/.test(obj.campana)){ toast('Campaña con formato 2026/27'); return; }
+  if(k==='tareas') obj.hecha_fecha = obj.hecha ? (reg?.hecha_fecha || hoy()) : null;
+  $('#fOk').disabled=true;
+  const q = reg ? sb.from('olv_'+k).update(obj).eq('id',reg.id) : sb.from('olv_'+k).insert(obj);
+  const {error} = await q;
+  if(error){ $('#fOk').disabled=false; toast('Error: '+error.message); return; }
+  // efectos secundarios
+  if(k==='tratamientos' && !reg && obj.repetir_dias>0){
+    await sb.from('olv_tareas').insert({titulo:`Repetir tratamiento: ${obj.producto}`, tipo:'Curar / tratamiento', fecha:addDias(obj.fecha,obj.repetir_dias), finca_id:obj.finca_id});
+    await cargar('tareas');
+  }
+  if(k==='tareas' && obj.hecha && !reg?.hecha && obj.repetir_dias>0) await repetirTarea({...reg,...obj});
+  $('#dlg').close(); await cargar(k); if(k==='gastos'||k==='ingresos') pintarCampanas(); render(); toast('Guardado');
+}
+async function borrar(k,id){
+  if(!confirm('¿Borrar este registro?')) return;
+  const {error} = await sb.from('olv_'+k).delete().eq('id',id);
+  if(error){ toast('Error: '+error.message); return; }
+  $('#dlg').close(); await cargar(k); render(); toast('Borrado');
+}
+async function repetirTarea(t){
+  await sb.from('olv_tareas').insert({titulo:t.titulo, tipo:t.tipo, finca_id:t.finca_id, repetir_dias:t.repetir_dias, notas:t.notas, fecha:addDias(hoy(), t.repetir_dias)});
+  await cargar('tareas');
+}
+async function marcarHecha(id){
+  const t=D.tareas.find(x=>x.id===id);
+  const {error}=await sb.from('olv_tareas').update({hecha:true,hecha_fecha:hoy()}).eq('id',id);
+  if(error){ toast('Error: '+error.message); return; }
+  if(t.repetir_dias>0) await repetirTarea(t);
+  await cargar('tareas'); render(); toast('Hecha');
+}
+
+// ===== Cálculo de la campaña =====
+function calcular(c){
+  const [ini,fin] = campRango(c);
+  const fincas = D.fincas.filter(f=>f.activa);
+  const totOl = fincas.reduce((s,f)=>s+(f.olivos||0),0);
+  const cuota = f => totOl ? (f.olivos||0)/totOl : (fincas.length?1/fincas.length:0);
+  const R = {}; fincas.forEach(f=>R[f.id]={f, directo:0, comun:0, ingD:0, ingC:0, kilos:0});
+  const gastos = D.gastos.filter(g=>g.fecha>=ini && g.fecha<=fin);
+  // amortizaciones
+  const a0=parseInt(c); const amort=[];
+  D.maquinas.forEach(m=>{
+    if(!(m.precio_compra>0 && m.anos_amortizacion>0 && m.fecha_compra)) return;
+    const ac=parseInt(campDe(m.fecha_compra));
+    if(a0>=ac && a0<ac+m.anos_amortizacion) amort.push({categoria:'Amortización maquinaria', concepto:m.nombre, importe:m.precio_compra/m.anos_amortizacion, finca_id:null});
+  });
+  const todos=[...gastos,...amort];
+  const porCat={}; let comunTot=0, totG=0;
+  todos.forEach(g=>{
+    const imp=Number(g.importe)||0; totG+=imp;
+    porCat[g.categoria]=(porCat[g.categoria]||0)+imp;
+    if(g.finca_id && R[g.finca_id]) R[g.finca_id].directo+=imp;
+    else { comunTot+=imp; fincas.forEach(f=>R[f.id].comun+=imp*cuota(f)); }
+  });
+  const ingresos=D.ingresos.filter(i=>i.campana===c);
+  let totI=0, kilos=0, ingC=0;
+  ingresos.forEach(i=>{
+    const imp=Number(i.importe)||0; totI+=imp; kilos+=Number(i.kilos)||0;
+    if(i.finca_id && R[i.finca_id]){ R[i.finca_id].ingD+=imp; R[i.finca_id].kilos+=Number(i.kilos)||0; }
+    else { ingC+=imp; fincas.forEach(f=>R[f.id].ingC+=imp*cuota(f)); }
+  });
+  return {totG,totI,kilos,comunTot,ingC,porCat,R,fincas,totOl,amort,nG:gastos.length,nI:ingresos.length};
+}
+
+// ===== Avisos =====
+function avisos(){
+  const h=hoy(), u=AJ.umb, out=[];
+  D.tareas.filter(t=>!t.hecha).forEach(t=>{
+    const d=difDias(h,t.fecha);
+    if(d<0) out.push({c:'bad',t:`Tarea atrasada ${-d} día(s): <b>${esc(t.titulo)}</b> · ${esc(fincaNom(t.finca_id))}`,id:t.id,ord:d});
+    else if(d<=u.aviso_dias) out.push({c:'',t:`${d===0?'Hoy':d===1?'Mañana':'En '+d+' días'}: <b>${esc(t.titulo)}</b>${t.finca_id?' · '+esc(fincaNom(t.finca_id)):''}`,id:t.id,ord:d});
+  });
+  D.maquinas.filter(m=>m.activa).forEach(m=>{
+    [['itv_proxima','ITV'],['seguro_vence','Seguro']].forEach(([k,n])=>{
+      if(!m[k]) return; const d=difDias(h,m[k]);
+      if(d<0) out.push({c:'bad',t:`${n} de <b>${esc(m.nombre)}</b> caducada desde el ${fFecha(m[k])}`,ord:d,maq:m.id});
+      else if(d<=u.itv_dias) out.push({c:d<=7?'bad':'',t:`${n} de <b>${esc(m.nombre)}</b> el ${fFecha(m[k])} (${d} días)`,ord:d,maq:m.id});
+    });
+  });
+  D.tratamientos.forEach(t=>{
+    if(!t.plazo_seguridad_dias) return; const fin=addDias(t.fecha,t.plazo_seguridad_dias); const d=difDias(h,fin);
+    if(d>0) out.push({c:'bad',t:`No recoger en <b>${esc(fincaNom(t.finca_id))}</b> hasta el ${fFecha(fin)} (plazo de seguridad de ${esc(t.producto)})`,ord:-100});
+  });
+  return out.sort((a,b)=>a.ord-b.ord);
+}
+
+// ===== Vistas =====
+function ir(v){ VIEW=v; document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('on',b.dataset.v===v)); render(); scrollTo(0,0); }
+document.querySelectorAll('#nav button').forEach(b=>b.onclick=()=>ir(b.dataset.v));
+function fab(k){ const f=$('#fab'); if(!k){f.classList.add('hidden');return;} f.classList.remove('hidden'); f.onclick=()=>abrir(k); }
+
+function render(){
+  const V={inicio:vInicio,gastos:vGastos,ingresos:vIngresos,campo:vCampo,tiempo:vTiempo,mas:vMas}[VIEW];
+  $('#view').innerHTML = V();
+  const post={tiempo:postTiempo,mas:postMas}[VIEW]; if(post) post();
+  document.querySelectorAll('[data-ed]').forEach(el=>el.onclick=e=>{ if(e.target.closest('[data-hecha]')) return; const [k,id]=el.dataset.ed.split(':'); abrir(k, D[k].find(x=>x.id===id)); });
+  document.querySelectorAll('[data-hecha]').forEach(el=>el.onclick=e=>{ e.stopPropagation(); marcarHecha(el.dataset.hecha); });
+  document.querySelectorAll('[data-sub]').forEach(el=>el.onclick=()=>{ const [v,s]=el.dataset.sub.split(':'); SUB[v]=s; render(); });
+  document.querySelectorAll('[data-go]').forEach(el=>el.onclick=()=>ir(el.dataset.go));
+}
+
+function vInicio(){
+  fab(null);
+  if(!D.fincas.length) return `<div class="card"><h2>Empieza por aquí</h2><p>Da de alta tus fincas con su número de olivos (sirve para repartir los gastos comunes) y sus coordenadas (para el tiempo).</p><button class="btn" onclick="ir('mas');setTimeout(()=>abrir('fincas'),0)">Añadir finca</button></div>`;
+  const C=calcular(CAMP), m=C.totI-C.totG, av=avisos();
+  const avHtml = av.length ? av.map(a=>`<div class="aviso ${a.c}" ${a.id?`data-ed="tareas:${a.id}" style="cursor:pointer"`:a.maq?`data-ed="maquinas:${a.maq}" style="cursor:pointer"`:''}>${a.t}</div>`).join('') : '<div class="aviso ok">Nada pendiente en los próximos días.</div>';
+  const cats=Object.entries(C.porCat).sort((a,b)=>b[1]-a[1]); const mx=cats[0]?.[1]||1;
+  const filas=C.fincas.map(f=>{ const r=C.R[f.id]; const g=r.directo+r.comun, i=r.ingD+r.ingC, mg=i-g;
+    return `<tr><td>${esc(f.nombre)}<div class="mut">${num(f.olivos)} olivos · ${num(C.totOl?f.olivos/C.totOl*100:0,1)} %</div></td><td class="n">${eur(g)}<div class="mut">${eur(r.directo)} propios<br>${eur(r.comun)} común</div></td><td class="n">${eur(i)}</td><td class="n ${mg>=0?'pos':'neg'}"><b>${eur(mg)}</b><div class="mut">${f.olivos?eur(g/f.olivos)+'/olivo':''}</div></td></tr>`; }).join('');
+  return `
+  <div class="card"><h2>Avisos</h2>${avHtml}</div>
+  <div class="kpis">
+    <div class="kpi"><span>Ingresos ${esc(CAMP)}</span><b>${eur(C.totI)}</b></div>
+    <div class="kpi"><span>Gastos ${esc(CAMP)}</span><b>${eur(C.totG)}</b></div>
+    <div class="kpi"><span>Margen</span><b class="${m>=0?'pos':'neg'}">${eur(m)}</b></div>
+    <div class="kpi"><span>Kilos aceituna</span><b>${num(C.kilos)}</b></div>
+    <div class="kpi"><span>Coste por kg</span><b>${C.kilos?eur(C.totG/C.kilos):'—'}</b></div>
+    <div class="kpi"><span>Coste por olivo</span><b>${C.totOl?eur(C.totG/C.totOl):'—'}</b></div>
+  </div>
+  <div class="card"><h2>Por finca</h2><div class="scroll"><table>
+    <tr><th>Finca</th><th class="n">Gastos</th><th class="n">Ingresos</th><th class="n">Margen</th></tr>${filas}
+  </table></div><p class="mut">Gastos comunes (${eur(C.comunTot)}) e ingresos sin finca (${eur(C.ingC)}) se reparten por nº de olivos.${C.amort.length?` Incluye ${eur(C.amort.reduce((s,a)=>s+a.importe,0))} de amortización de maquinaria.`:''}</p></div>
+  <div class="card"><h2>Gastos por categoría</h2>${cats.length?`<table>${cats.map(([k,v])=>`<tr><td style="width:40%">${esc(k)}</td><td style="min-width:70px"><div class="bar"><i style="width:${v/mx*100}%"></i></div></td><td class="n">${eur(v)}</td><td class="n mut">${num(C.totG?v/C.totG*100:0)} %</td></tr>`).join('')}</table>`:'<p class="mut">Sin gastos en esta campaña.</p>'}</div>`;
+}
+
+function filtroFinca(v){
+  const s=SUB[v+'F']||'*';
+  return `<select onchange="SUB['${v}F']=this.value;render()" style="width:auto"><option value="*">Todas</option><option value="" ${s===''?'selected':''}>Común</option>${D.fincas.map(f=>`<option value="${f.id}" ${s===f.id?'selected':''}>${esc(f.nombre)}</option>`).join('')}</select>`;
+}
+function vGastos(){
+  fab('gastos'); const [ini,fin]=campRango(CAMP); const fF=SUB.gastosF||'*', fC=SUB.gastosC||'*';
+  const l=D.gastos.filter(g=>g.fecha>=ini&&g.fecha<=fin&&(fF==='*'||(g.finca_id||'')===fF)&&(fC==='*'||g.categoria===fC));
+  const tot=l.reduce((s,g)=>s+Number(g.importe),0);
+  const catsU=[...new Set([...AJ.cats,...D.gastos.map(g=>g.categoria)])];
+  return `<div class="card"><h2>Gastos ${esc(CAMP)}<span class="sp"></span><button class="btn sec sm" onclick="csv('gastos')">CSV</button></h2>
+  <div class="row" style="margin-bottom:8px">${filtroFinca('gastos')}<select onchange="SUB.gastosC=this.value;render()" style="width:auto"><option value="*">Todas las categorías</option>${catsU.map(c=>`<option ${c===fC?'selected':''}>${esc(c)}</option>`).join('')}</select></div>
+  <p class="mut">${l.length} gastos · <b>${eur(tot)}</b></p>
+  ${l.length?`<div class="scroll"><table><tr><th>Fecha</th><th>Concepto</th><th>Finca</th><th class="n">Importe</th></tr>${l.map(g=>`<tr class="click" data-ed="gastos:${g.id}"><td>${fFecha(g.fecha)}</td><td>${esc(g.concepto||g.categoria)}<div class="mut">${esc(g.categoria)}${g.maquina_id?' · '+esc(maqNom(g.maquina_id)):''}${g.proveedor?' · '+esc(g.proveedor):''}</div></td><td>${g.finca_id?esc(fincaNom(g.finca_id)):'<span class="tag">Común</span>'}</td><td class="n">${eur(g.importe)}</td></tr>`).join('')}</table></div>`:'<p class="mut">No hay gastos. Pulsa + para añadir.</p>'}</div>`;
+}
+function vIngresos(){
+  fab('ingresos'); const fF=SUB.ingresosF||'*';
+  const l=D.ingresos.filter(i=>i.campana===CAMP&&(fF==='*'||(i.finca_id||'')===fF));
+  const tot=l.reduce((s,i)=>s+Number(i.importe),0), kg=l.reduce((s,i)=>s+(Number(i.kilos)||0),0);
+  const liq=l.filter(i=>i.kilos&&i.rendimiento); const rm = liq.length? liq.reduce((s,i)=>s+i.kilos*i.rendimiento,0)/liq.reduce((s,i)=>s+Number(i.kilos),0):0;
+  return `<div class="card"><h2>Ingresos ${esc(CAMP)}<span class="sp"></span><button class="btn sec sm" onclick="csv('ingresos')">CSV</button></h2>
+  <div class="row" style="margin-bottom:8px">${filtroFinca('ingresos')}</div>
+  <p class="mut">${l.length} ingresos · <b>${eur(tot)}</b>${kg?` · ${num(kg)} kg · ${eur(tot/kg)}/kg medio`:''}${rm?` · rendimiento medio ${num(rm,2)} %`:''}</p>
+  ${l.length?`<div class="scroll"><table><tr><th>Fecha</th><th>Tipo</th><th>Finca</th><th class="n">Kilos</th><th class="n">Importe</th></tr>${l.map(i=>`<tr class="click" data-ed="ingresos:${i.id}"><td>${fFecha(i.fecha)}</td><td>${esc(i.tipo)}${i.rendimiento?`<div class="mut">${num(i.rendimiento,2)} % · ${i.precio_kg?eur(i.precio_kg)+'/kg':''}</div>`:''}</td><td>${i.finca_id?esc(fincaNom(i.finca_id)):'<span class="tag">Común</span>'}</td><td class="n">${i.kilos?num(i.kilos):''}</td><td class="n">${eur(i.importe)}</td></tr>`).join('')}</table></div>`:'<p class="mut">No hay ingresos en esta campaña.</p>'}</div>`;
+}
+function vCampo(){
+  const s=SUB.campo||'tareas';
+  fab(s==='tareas'?'tareas':'tratamientos');
+  const tabs=`<div class="tabs2"><button data-sub="campo:tareas" class="${s==='tareas'?'on':''}">Tareas</button><button data-sub="campo:hechas" class="${s==='hechas'?'on':''}">Hechas</button><button data-sub="campo:trat" class="${s==='trat'?'on':''}">Tratamientos</button></div>`;
+  const h=hoy();
+  if(s==='tareas'||s==='hechas'){
+    const pend=s==='tareas';
+    const l=D.tareas.filter(t=>t.hecha!==pend).sort((a,b)=>pend?a.fecha.localeCompare(b.fecha):(b.hecha_fecha||b.fecha).localeCompare(a.hecha_fecha||a.fecha));
+    return tabs+`<div class="card">${l.length?`<table>${l.map(t=>{const d=difDias(h,t.fecha); const col=!pend?'':d<0?'r':d<=AJ.umb.aviso_dias?'a':'g';
+      return `<tr class="click" data-ed="tareas:${t.id}"><td>${pend?`<span class="dot ${col}"></span>`:''}${esc(t.titulo)}<div class="mut">${esc(t.tipo||'')}${t.finca_id?' · '+esc(fincaNom(t.finca_id)):''}${t.repetir_dias?' · cada '+t.repetir_dias+' días':''}</div></td><td class="n">${fFecha(pend?t.fecha:(t.hecha_fecha||t.fecha))}</td>${pend?`<td class="n"><button class="btn sec sm" data-hecha="${t.id}">Hecha</button></td>`:''}</tr>`}).join('')}</table>`:`<p class="mut">${pend?'No hay tareas pendientes.':'Aún no hay tareas hechas.'}</p>`}
+      ${pend?'<div class="row" style="margin-top:10px"><button class="btn sec sm" onclick="ics()">Pasar avisos al calendario del móvil (.ics)</button></div>':''}</div>`;
+  }
+  const l=D.tratamientos;
+  return tabs+`<div class="card"><h2>Tratamientos<span class="sp"></span><button class="btn sec sm" onclick="csv('tratamientos')">CSV</button></h2><p class="mut">Sirve de registro para el cuaderno de campo.</p>
+  ${l.length?`<div class="scroll"><table><tr><th>Fecha</th><th>Producto</th><th>Finca</th><th>Dosis</th></tr>${l.map(t=>`<tr class="click" data-ed="tratamientos:${t.id}"><td>${fFecha(t.fecha)}</td><td>${esc(t.producto)}<div class="mut">${esc(t.motivo||'')}${t.num_registro?' · Reg. '+esc(t.num_registro):''}</div></td><td>${esc(fincaNom(t.finca_id))}</td><td>${esc(t.dosis||'')}</td></tr>`).join('')}</table></div>`:'<p class="mut">Sin tratamientos registrados.</p>'}</div>`;
+}
+
+// ===== Tiempo =====
+const WCODE = c => c===0?'Despejado':c<=2?'Poco nuboso':c===3?'Nublado':c<=48?'Niebla':c<=57?'Llovizna':c<=67?'Lluvia':c<=77?'Nieve':c<=82?'Chubascos':c<=86?'Nieve':'Tormenta';
+const DIAS=['dom','lun','mar','mié','jue','vie','sáb'];
+let METEO_CACHE={};
+function vTiempo(){
+  fab(null);
+  const conCoord=D.fincas.filter(f=>f.activa&&f.lat!=null&&f.lon!=null);
+  if(!conCoord.length) return `<div class="card"><h2>Tiempo</h2><p>Pon latitud y longitud a alguna finca (Más → Fincas) para ver la previsión.</p></div>`;
+  if(!SUB.tiempo || !conCoord.find(f=>f.id===SUB.tiempo)) SUB.tiempo=conCoord[0].id;
+  return `<div class="card"><div class="row"><select id="tFinca" style="width:auto" onchange="SUB.tiempo=this.value;render()">${conCoord.map(f=>`<option value="${f.id}" ${f.id===SUB.tiempo?'selected':''}>${esc(f.nombre)}</option>`).join('')}</select><span class="mut">Previsión 7 días · Open-Meteo</span></div></div><div id="tOut"><div class="card mut">Cargando previsión…</div></div>`;
+}
+async function postTiempo(){
+  const f=D.fincas.find(x=>x.id===SUB.tiempo); if(!f) return;
+  const key=f.lat+','+f.lon; let w=METEO_CACHE[key];
+  if(!w || Date.now()-w._t>30*60e3){
+    try{
+      const url=`https://api.open-meteo.com/v1/forecast?latitude=${f.lat}&longitude=${f.lon}&hourly=temperature_2m,relative_humidity_2m,precipitation,precipitation_probability,wind_speed_10m,wind_gusts_10m&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_gusts_10m_max&timezone=Europe%2FMadrid&past_days=1&forecast_days=7`;
+      const r=await fetch(url); if(!r.ok) throw new Error(r.status); w=await r.json(); w._t=Date.now(); METEO_CACHE[key]=w;
+    }catch(e){ const o=$('#tOut'); if(o) o.innerHTML=`<div class="card neg">No se pudo cargar la previsión (${esc(e.message)}).</div>`; return; }
+  }
+  const o=$('#tOut'); if(!o||SUB.tiempo!==f.id) return;
+  const dias=evaluarTiempo(w);
+  const sel=SUB.tDia;
+  o.innerHTML=`<div class="card"><div class="scroll"><table>
+    <tr><th>Día</th><th>Tiempo</th><th>Atomizar</th><th>Trabajar</th><th>Aceituna</th></tr>
+    ${dias.map(d=>`<tr class="click" onclick="SUB.tDia=SUB.tDia==='${d.fecha}'?null:'${d.fecha}';postTiempo()" ${d.fecha===sel?'style="background:rgba(127,127,100,.1)"':''}><td><b>${d.nombre}</b><div class="mut">${fFecha(d.fecha)}</div></td>
+      <td>${WCODE(d.code)}<div class="mut">${num(d.tmin)}–${num(d.tmax)}° · ${d.lluvia>0?num(d.lluvia,1)+' mm':'sin lluvia'} · ráf. ${num(d.rafaga)} km/h</div></td>
+      <td><span class="dot ${d.spray.c}"></span>${esc(d.spray.txt)}</td><td><span class="dot ${d.work.c}"></span>${esc(d.work.txt)}</td><td><span class="dot ${d.ace.c}"></span>${esc(d.ace.txt)}</td></tr>`).join('')}
+  </table></div><p class="mut">Pulsa un día para ver hora a hora. Los criterios se cambian en Más → Ajustes del tiempo. Viento medido a 10 m; en la copa del olivo suele ser algo menor.</p></div>
+  ${sel?horario(w,sel):''}`;
+}
+function horas(w){ const H=w.hourly; return H.time.map((t,i)=>({fecha:t.slice(0,10),h:+t.slice(11,13),t:H.temperature_2m[i],hr:H.relative_humidity_2m[i],p:H.precipitation[i]||0,pp:H.precipitation_probability[i]??0,v:H.wind_speed_10m[i],r:H.wind_gusts_10m[i]})); }
+function evaluarTiempo(w){
+  const u=AJ.umb, H=horas(w), Dd=w.daily, out=[];
+  Dd.time.forEach((fecha,i)=>{
+    if(fecha<hoy()) return;
+    const ayer=i>0?(Dd.precipitation_sum[i-1]||0):0;
+    const hh=H.filter(x=>x.fecha===fecha);
+    // atomizar
+    const motivos={viento:0,calma:0,lluvia:0,calor:0,frio:0,seco:0}; let mejor=[],act=[];
+    hh.filter(x=>x.h>=6&&x.h<=21).forEach(x=>{
+      const idx=H.indexOf(x); const sig=H.slice(idx,idx+u.spray_horas_lluvia+1);
+      const lluvia=sig.some(y=>y.p>0||y.pp>=u.spray_pmax);
+      let ok=true;
+      if(x.v>u.spray_vmax||x.r>u.spray_rmax){ok=false;motivos.viento++;}
+      if(x.v<u.spray_vmin){ok=false;motivos.calma++;}
+      if(lluvia){ok=false;motivos.lluvia++;}
+      if(x.t>u.spray_tmax){ok=false;motivos.calor++;}
+      if(x.t<u.spray_tmin){ok=false;motivos.frio++;}
+      if(x.hr<u.spray_hrmin){ok=false;motivos.seco++;}
+      if(ok){act.push(x.h); if(act.length>mejor.length) mejor=act.slice();} else act=[];
+    });
+    const nomMot={viento:'mucho viento',calma:'viento en calma',lluvia:'lluvia',calor:'calor',frio:'frío',seco:'aire seco'};
+    const peor=Object.entries(motivos).sort((a,b)=>b[1]-a[1])[0];
+    const spray = mejor.length>=u.spray_min_horas ? {c:'g',txt:`${mejor[0]}–${mejor[mejor.length-1]+1} h`} : mejor.length ? {c:'a',txt:`solo ${mejor[0]}–${mejor[mejor.length-1]+1} h`} : {c:'r',txt:nomMot[peor[0]]};
+    // trabajar
+    const dia=hh.filter(x=>x.h>=8&&x.h<=18);
+    const ll=dia.reduce((s,x)=>s+x.p,0), tmax=Math.max(...dia.map(x=>x.t)), rmax=Math.max(...dia.map(x=>x.r));
+    let work;
+    if(ll<u.work_lluvia && tmax<=u.work_tmax && rmax<u.work_rmax) work={c:'g',txt:'bien'};
+    else if(ll<3*u.work_lluvia && tmax<=u.work_tmax+3) work={c:'a',txt: ll>=u.work_lluvia?`algo de lluvia (${num(ll,1)} mm)`:tmax>u.work_tmax?`calor (${num(tmax)}°)`:'viento fuerte'};
+    else work={c:'r',txt: ll>=3*u.work_lluvia?`lluvia (${num(ll,1)} mm)`:tmax>u.work_tmax?`calor (${num(tmax)}°)`:'viento fuerte'};
+    // aceituna
+    let ace;
+    if(work.c==='r') ace={c:'r',txt:work.txt};
+    else if(ayer>=u.ace_lluvia_ayer_max) ace={c:'r',txt:`barro: ${num(ayer,1)} mm el día antes`};
+    else if(ayer>=u.ace_lluvia_ayer) ace={c:'a',txt:`suelo húmedo (${num(ayer,1)} mm ayer)`};
+    else ace=work.c==='g'?{c:'g',txt:'bien'}:{c:'a',txt:work.txt};
+    const [y,m,d]=fecha.split('-').map(Number);
+    out.push({fecha,nombre:fecha===hoy()?'Hoy':DIAS[new Date(y,m-1,d).getDay()],code:Dd.weather_code[i],tmin:Dd.temperature_2m_min[i],tmax:Dd.temperature_2m_max[i],lluvia:Dd.precipitation_sum[i]||0,rafaga:Dd.wind_gusts_10m_max[i],spray,work,ace});
+  });
+  return out;
+}
+function horario(w,fecha){
+  const hh=horas(w).filter(x=>x.fecha===fecha&&x.h>=6&&x.h<=21);
+  return `<div class="card"><h2>${fFecha(fecha)} hora a hora</h2><div class="scroll"><table><tr><th>Hora</th><th class="n">Temp.</th><th class="n">Humedad</th><th class="n">Viento</th><th class="n">Ráfagas</th><th class="n">Lluvia</th></tr>
+  ${hh.map(x=>`<tr><td>${x.h}:00</td><td class="n">${num(x.t)}°</td><td class="n">${num(x.hr)} %</td><td class="n">${num(x.v)} km/h</td><td class="n">${num(x.r)} km/h</td><td class="n">${x.p?num(x.p,1)+' mm':''} <span class="mut">${num(x.pp)} %</span></td></tr>`).join('')}</table></div></div>`;
+}
+
+// ===== Más: fincas, maquinaria, ajustes =====
+function vMas(){
+  const s=SUB.mas||'fincas';
+  fab(s==='fincas'?'fincas':s==='maq'?'maquinas':null);
+  const tabs=`<div class="tabs2"><button data-sub="mas:fincas" class="${s==='fincas'?'on':''}">Fincas</button><button data-sub="mas:maq" class="${s==='maq'?'on':''}">Vehículos y máquinas</button><button data-sub="mas:ajustes" class="${s==='ajustes'?'on':''}">Ajustes</button></div>`;
+  if(s==='fincas'){
+    const tot=D.fincas.filter(f=>f.activa).reduce((a,f)=>a+(f.olivos||0),0);
+    return tabs+`<div class="card"><h2>Fincas</h2>${D.fincas.length?`<table><tr><th>Finca</th><th class="n">Olivos</th><th class="n">Ha</th><th class="n">Reparto</th></tr>${D.fincas.map(f=>`<tr class="click" data-ed="fincas:${f.id}"><td>${esc(f.nombre)}${f.activa?'':' <span class="tag">inactiva</span>'}<div class="mut">${esc(f.municipio||'')}${f.lat!=null?' · con ubicación':' · sin ubicación'}</div></td><td class="n">${num(f.olivos)}</td><td class="n">${f.ha?num(f.ha,2):''}</td><td class="n">${f.activa&&tot?num(f.olivos/tot*100,1)+' %':''}</td></tr>`).join('')}</table>`:'<p class="mut">Pulsa + para añadir tu primera finca.</p>'}</div>`;
+  }
+  if(s==='maq'){
+    const h=hoy();
+    const fx=(d)=>{ if(!d) return '<span class="mut">—</span>'; const n=difDias(h,d); return `<span class="dot ${n<0||n<=7?'r':n<=AJ.umb.itv_dias?'a':'g'}"></span>${fFecha(d)}`; };
+    return tabs+`<div class="card"><h2>Vehículos y máquinas</h2>${D.maquinas.length?`<div class="scroll"><table><tr><th>Nombre</th><th>ITV</th><th>Seguro</th><th class="n">Amort./año</th></tr>${D.maquinas.map(m=>`<tr class="click" data-ed="maquinas:${m.id}"><td>${esc(m.nombre)}${m.activa?'':' <span class="tag">baja</span>'}<div class="mut">${esc(m.tipo||'')}${m.matricula?' · '+esc(m.matricula):''}</div></td><td>${fx(m.itv_proxima)}</td><td>${fx(m.seguro_vence)}</td><td class="n">${m.precio_compra>0&&m.anos_amortizacion>0?eur(m.precio_compra/m.anos_amortizacion):''}</td></tr>`).join('')}</table></div>`:'<p class="mut">Pulsa + para añadir tractor, coche, atomizador…</p>'}
+    <p class="mut">Cuando pases la ITV, entra en el vehículo y pon la fecha de la siguiente.</p></div>`;
+  }
+  const u=AJ.umb;
+  const inp=(k,l)=>`<label>${l}<input data-umb="${k}" inputmode="decimal" value="${u[k]}"></label>`;
+  return tabs+`<div class="card"><h2>Categorías de gasto</h2><p class="mut">Una por línea.</p><textarea id="ajCats" rows="8">${esc(AJ.cats.join('\n'))}</textarea></div>
+  <div class="card"><h2>Ajustes del tiempo</h2>
+    <b>Atomizar</b><div class="grid2">${inp('spray_vmin','Viento mínimo (km/h)')}${inp('spray_vmax','Viento máximo (km/h)')}${inp('spray_rmax','Ráfagas máximas (km/h)')}${inp('spray_hrmin','Humedad mínima (%)')}${inp('spray_tmin','Temp. mínima (°)')}${inp('spray_tmax','Temp. máxima (°)')}${inp('spray_horas_lluvia','Horas sin lluvia después')}${inp('spray_pmax','Prob. lluvia máx. (%)')}${inp('spray_min_horas','Horas seguidas para dar verde')}</div>
+    <b>Trabajar en el campo</b><div class="grid2">${inp('work_tmax','Temp. máxima (°)')}${inp('work_rmax','Ráfagas máximas (km/h)')}${inp('work_lluvia','Lluvia máx. de 8 a 18 h (mm)')}</div>
+    <b>Coger aceituna</b><div class="grid2">${inp('ace_lluvia_ayer','Lluvia del día antes para ámbar (mm)')}${inp('ace_lluvia_ayer_max','… para rojo (mm)')}</div>
+    <b>Avisos</b><div class="grid2">${inp('aviso_dias','Avisar tareas con (días)')}${inp('itv_dias','Avisar ITV/seguro con (días)')}</div>
+    <p class="mut">Valores orientativos: revisa siempre la etiqueta del producto, que manda sobre esto.</p>
+  </div>
+  <div class="row"><button class="btn" id="ajGuardar">Guardar ajustes</button><button class="btn sec" onclick="salir()">Cerrar sesión</button></div>`;
+}
+function postMas(){
+  const b=$('#ajGuardar'); if(!b) return;
+  b.onclick=()=>{
+    AJ.cats=$('#ajCats').value.split('\n').map(s=>s.trim()).filter(Boolean);
+    document.querySelectorAll('[data-umb]').forEach(i=>{ const v=pn(i.value); if(v!=null&&!isNaN(v)) AJ.umb[i.dataset.umb]=v; });
+    METEO_CACHE={}; guardarAjustes();
+  };
+}
+
+// ===== Exportar =====
+function bajar(nombre, contenido, tipo){ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([contenido],{type:tipo})); a.download=nombre; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1000); }
+function csv(k){
+  const [ini,fin]=campRango(CAMP); const sep=';'; const q=v=>`"${String(v??'').replace(/"/g,'""')}"`; const n=v=>v==null?'':String(v).replace('.',',');
+  let rows;
+  if(k==='gastos') rows=[['Fecha','Categoría','Concepto','Finca','Máquina','Proveedor','Importe','Notas'], ...D.gastos.filter(g=>g.fecha>=ini&&g.fecha<=fin).map(g=>[g.fecha,g.categoria,g.concepto,fincaNom(g.finca_id),maqNom(g.maquina_id),g.proveedor,n(g.importe),g.notas])];
+  else if(k==='ingresos') rows=[['Fecha','Campaña','Tipo','Finca','Kilos','Rendimiento %','Precio €/kg','Importe','Notas'], ...D.ingresos.filter(i=>i.campana===CAMP).map(i=>[i.fecha,i.campana,i.tipo,fincaNom(i.finca_id),n(i.kilos),n(i.rendimiento),n(i.precio_kg),n(i.importe),i.notas])];
+  else rows=[['Fecha','Finca','Producto','Nº registro','Dosis','Plaga/motivo','Superficie ha','Aplicador','Plazo seguridad días','Notas'], ...D.tratamientos.map(t=>[t.fecha,fincaNom(t.finca_id),t.producto,t.num_registro,t.dosis,t.motivo,n(t.superficie_ha),t.aplicador,t.plazo_seguridad_dias,t.notas])];
+  bajar(`olivas_${k}_${CAMP.replace('/','-')}.csv`, '﻿'+rows.map(r=>r.map(q).join(sep)).join('\r\n'), 'text/csv;charset=utf-8');
+}
+function ics(){
+  const ev=[]; const f=s=>s.replace(/-/g,''); const e=s=>String(s).replace(/[\\;,]/g,m=>'\\'+m).replace(/\n/g,'\\n');
+  const add=(uid,fecha,tit,alarmDias)=>ev.push(`BEGIN:VEVENT\r\nUID:${uid}@olivas\r\nDTSTAMP:${new Date().toISOString().replace(/[-:]/g,'').slice(0,15)}Z\r\nDTSTART;VALUE=DATE:${f(fecha)}\r\nDTEND;VALUE=DATE:${f(addDias(fecha,1))}\r\nSUMMARY:${e(tit)}\r\nBEGIN:VALARM\r\nACTION:DISPLAY\r\nDESCRIPTION:${e(tit)}\r\nTRIGGER:-P${alarmDias-1}DT15H\r\nEND:VALARM\r\nEND:VEVENT`);
+  D.tareas.filter(t=>!t.hecha&&t.fecha>=hoy()).forEach(t=>add('t'+t.id,t.fecha,`Olivas: ${t.titulo}${t.finca_id?' ('+fincaNom(t.finca_id)+')':''}`,1));
+  D.maquinas.filter(m=>m.activa).forEach(m=>{ if(m.itv_proxima>=hoy()) add('i'+m.id,m.itv_proxima,`ITV ${m.nombre}`,14); if(m.seguro_vence>=hoy()) add('s'+m.id,m.seguro_vence,`Seguro ${m.nombre}`,14); });
+  if(!ev.length){ toast('No hay nada pendiente que exportar'); return; }
+  bajar('olivas_avisos.ics',`BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Olivas//ES\r\n${ev.join('\r\n')}\r\nEND:VCALENDAR\r\n`,'text/calendar');
+}
+
+arranque();
+</script>
+</body>
+</html>
