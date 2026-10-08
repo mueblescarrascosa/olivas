@@ -31,6 +31,15 @@ nav button.on{color:var(--olv);font-weight:700;box-shadow:inset 0 3px 0 var(--ol
 .kpi{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
 .kpi b{display:block;font-size:20px}
 .kpi span{color:var(--mut);font-size:12px}
+.wid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:12px}
+@media(min-width:900px){.wid{grid-template-columns:repeat(4,1fr)}}
+.wg{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 12px;cursor:pointer;min-height:86px;display:flex;flex-direction:column;gap:2px}
+.wg:hover{border-color:var(--olv)}
+.wg .wt{color:var(--mut);font-size:12px;display:flex;justify-content:space-between;gap:6px}
+.wg .wt span:nth-child(2){overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.wg .wv{font-size:22px;font-weight:700;line-height:1.15}
+.wg .wv .ic{font-size:24px;margin-right:4px}
+.wg .ws{font-size:12.5px;color:var(--mut)}
 .pos{color:var(--ok)}.neg{color:var(--bad)}
 table{width:100%;border-collapse:collapse;font-size:14px}
 th,td{padding:7px 6px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
@@ -158,7 +167,7 @@ details.adv{margin:4px 0 10px}details.adv summary{cursor:pointer;color:var(--olv
 
 <script>
 // ===== Configuración =====
-const VERSION = '1.9';
+const VERSION = '2.0';
 const VERSION_FECHA = '8 oct 2026';
 const CREDITOS = `Olivas v${VERSION} (${VERSION_FECHA}) · © 2026 Alfonso Carrascosa Martínez · Hecha con Claude (Anthropic)`;
 const SUPA_URL = 'https://kseyndjbmkaflpoqitsj.supabase.co';
@@ -1962,6 +1971,7 @@ function vInicio(){
   return `
   <div class="quick"><button onclick="abrir('gastos')"><b>+</b>Gasto</button><button onclick="abrirParte()"><b>+</b>Jornada</button>${EN_COSECHA()?`<button onclick="abrir('pesadas')"><b>+</b>Pesada</button>`:`<button onclick="abrirAplicacion()"><b>+</b>Curación</button>`}<button onclick="escanear()"><b>+</b>Factura</button><button onclick="abrirApuntar()"><b>⋯</b>Más</button></div>
   ${resumenHoy()}
+  ${htmlWidgets()}
   <div class="cols2"><div class="card"><h2>Avisos</h2><div id="avMeteo"></div>${avHtml}</div>
   <div class="kpis">
     <div class="kpi"><span>Ingresos ${esc(CAMP)}</span><b>${eur(C.totI)}</b></div>
@@ -2029,6 +2039,7 @@ function vCampo(){
 }
 
 // ===== Tiempo =====
+const WICO = c => c===0?'☀️':c<=2?'🌤️':c===3?'☁️':c<=48?'🌫️':c<=67?'🌧️':c<=77?'❄️':c<=82?'🌦️':c<=86?'❄️':'⛈️';
 const WCODE = c => c===0?'Despejado':c<=2?'Poco nuboso':c===3?'Nublado':c<=48?'Niebla':c<=57?'Llovizna':c<=67?'Lluvia':c<=77?'Nieve':c<=82?'Chubascos':c<=86?'Nieve':'Tormenta';
 const DIAS=['dom','lun','mar','mié','jue','vie','sáb'];
 let METEO_CACHE={};
@@ -2186,6 +2197,7 @@ function horario(w,fecha){
 }
 // Avisos de oliva mojada en Inicio (hoy si es por la mañana, y mañana)
 async function postInicio(){
+  pintarWidgets();
   const box=$('#avMeteo'); if(!box) return;
   const fincas=D.fincas.filter(f=>f.activa&&f.lat!=null&&f.lon!=null).slice(0,6);
   const hora=new Date().getHours(); const dias=[...(hora<12?[hoy()]:[]), addDias(hoy(),1)];
@@ -2252,7 +2264,7 @@ function postMas(){
 }
 
 // ===== Secciones visibles =====
-const SECCIONES=[['mas:riego','Riego (Más)'],['campo:tecnico','Técnico (Campo)'],['campo:reun','Reuniones (Campo)'],['campo:almacen','Almacén (Campo)'],['campo:calc','Calcular dosis (Campo)'],['cuentas:facturas','Facturas (Cuentas)'],['cuentas:precios','Precios (Cuentas)'],['cuentas:papeles','Papeles y plazos (Cuentas)']];
+const SECCIONES=[['inicio:w_tiempo','Inicio: tiempo'],['inicio:w_gasoil','Inicio: precio del gasoil'],['inicio:w_lluvia','Inicio: lluvia caída'],['inicio:w_cita','Inicio: próxima cita o plazo'],['mas:riego','Riego (Más)'],['campo:tecnico','Técnico (Campo)'],['campo:reun','Reuniones (Campo)'],['campo:almacen','Almacén (Campo)'],['campo:calc','Calcular dosis (Campo)'],['cuentas:facturas','Facturas (Cuentas)'],['cuentas:precios','Precios (Cuentas)'],['cuentas:papeles','Papeles y plazos (Cuentas)']];
 function visto(k){ return !(AJ.ocultar||[]).includes(k); }
 
 // ===== Reuniones =====
@@ -2530,6 +2542,35 @@ async function comprobarPlazos(forzar){
 }
 function plazosAlDia(){ if(PLAZOS_MIRADO||!navigator.onLine) return; const w=AJ.plazos_web, y=+hoy().slice(0,4);
   if(!w||w.anio!==y||difDias(String(w.fecha).slice(0,10),hoy())>=7) comprobarPlazos(false); else PLAZOS_MIRADO=true; }
+
+
+// ===== Widgets de Inicio =====
+const WIDGETS=[['w_tiempo','Tiempo',"ir('tiempo')"],['w_gasoil','Gasóleo B',"SUB.cuentas='precios';ir('cuentas')"],['w_lluvia','Lluvia',"ir('tiempo')"],['w_cita','Próximo',"SUB.campo='reun';ir('campo')"]];
+function fincaPrincipal(){ const l=D.fincas.filter(f=>f.activa&&f.lat!=null&&f.lon!=null); return l.find(f=>f.id===ULT.t_tiempo)||l[0]; }
+function htmlWidgets(){
+  const w=WIDGETS.filter(([k])=>visto('inicio:'+k)); if(!w.length) return '';
+  return `<div class="wid">${w.map(([k,t,fn])=>`<div class="wg" id="${k}" onclick="${fn}"><div class="wt"><span>${t}</span></div><div class="wv mut" style="font-size:14px;font-weight:400">…</div></div>`).join('')}</div>`;
+}
+function proximaCita(){
+  const h=hoy(), y=+h.slice(0,4), l=[];
+  D.reuniones.filter(r=>!r.hecha&&r.fecha>=h).forEach(r=>l.push({f:r.fecha+(r.hora||''),fecha:r.fecha,t:r.titulo,s:`${r.hora||''}${r.lugar?' · '+r.lugar:''}`,fn:"SUB.campo='reun';ir('campo')"}));
+  plazos().forEach(p=>{ const {ini,fin}=plazoAnio(p,y); if(plazoHecho(p,y)||fin<h) return; const f=ini>h?ini:fin; l.push({f,fecha:f,t:p.nombre,s:ini>h?'se abre':'último día',fn:"SUB.cuentas='papeles';ir('cuentas')"}); });
+  D.tareas.filter(t=>!t.hecha&&t.fecha>=h).forEach(t=>l.push({f:t.fecha,fecha:t.fecha,t:t.titulo,s:'tarea'+(t.finca_id?' · '+fincaNom(t.finca_id):''),fn:`abrir('tareas',D.tareas.find(x=>x.id==='${t.id}'))`}));
+  return l.sort((a,b)=>a.f.localeCompare(b.f))[0];
+}
+function cuando(fecha){ const d=difDias(hoy(),fecha); return d===0?'Hoy':d===1?'Mañana':d<7?['dom','lun','mar','mié','jue','vie','sáb'][new Date(fecha+'T12:00').getDay()]+' '+(+fecha.slice(8)):fFecha(fecha); }
+async function pintarWidgets(){
+  const put=(k,html,fn)=>{ const el=$('#'+k); if(!el) return; el.innerHTML=`<div class="wt"><span>${WIDGETS.find(x=>x[0]===k)[1]}</span>${html.tag||''}</div><div class="wv">${html.v}</div><div class="ws">${html.s||''}</div>`; if(fn) el.setAttribute('onclick',fn); };
+  if($('#w_cita')){ const c=proximaCita(); put('w_cita', c?{v:`<span style="font-size:16px">${esc(c.t.length>38?c.t.slice(0,36)+'…':c.t)}</span>`,s:`${cuando(c.fecha)}${c.s?' · '+esc(c.s):''}`,tag:''}:{v:'<span style="font-size:15px" class="mut">Nada a la vista</span>',s:'Reuniones, plazos y tareas'}, c?.fn); }
+  const f=fincaPrincipal();
+  if($('#w_tiempo')){ if(!f) put('w_tiempo',{v:'<span class="mut" style="font-size:14px">Pon coordenadas a una finca</span>'}); else getMeteo(f).then(w=>{ const ev=evaluarTiempo(w,f); const d=ev.find(x=>x.fecha===hoy())||ev[0], m=ev.find(x=>x.fecha===addDias(hoy(),1));
+      put('w_tiempo',{tag:`<span>${esc(f.nombre)}</span>`,v:`<span class="ic">${WICO(d.code)}</span>${num(d.tmin)}–${num(d.tmax)}°`,s:`${d.lluvia>0?num(d.lluvia,1)+' mm · ':''}olivo: <span class="dot ${d.work.c}"></span>${d.work.c==='g'?'bien':d.work.c==='a'?'regular':'mojado'}${m?` · mañana ${WICO(m.code)} ${num(m.tmax)}°`:''}`}); }).catch(()=>put('w_tiempo',{v:'<span class="mut" style="font-size:14px">Sin conexión</span>'})); }
+  if($('#w_gasoil')) gasolineraFav().then(g=>{ if(!g){ put('w_gasoil',{v:'<span class="mut" style="font-size:14px">Sin datos</span>'}); return; }
+      const l=GAS.l.filter(x=>x.km<=15&&x.gasoleo_b), min=l.reduce((a,x)=>!a||x.gasoleo_b<a.gasoleo_b?x:a,null);
+      put('w_gasoil',{v:g.gasoleo_b?`${num(g.gasoleo_b,3)} €`:'—',s:`${esc(g.rotulo)}${min&&min.id!==g.id&&min.gasoleo_b<g.gasoleo_b?` · más barato: ${esc(min.rotulo)} ${num(min.gasoleo_b,3)}`:' · el más barato cerca'}`}); }).catch(()=>{});
+  if($('#w_lluvia')){ if(!f) put('w_lluvia',{v:'—'}); else lluviaReal(f).then(L=>{ if(!L){ put('w_lluvia',{v:'<span class="mut" style="font-size:14px">Sin estación cerca</span>'}); return; }
+      put('w_lluvia',{tag:`<span>${esc(L.est.municipio||'')}</span>`,v:`${num(L.d7,1)} mm <span class="mut" style="font-size:12px;font-weight:400">7 días</span>`,s:`hoy ${num(L.hoy,1)} · desde sept. ${num(L.camp,1)} mm${L.desde>L.sep?'*':''}`}); }).catch(()=>{}); }
+}
 
 // ===== Exportar =====
 function bajar(nombre, contenido, tipo){ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([contenido],{type:tipo})); a.download=nombre; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1000); }
