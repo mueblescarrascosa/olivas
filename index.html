@@ -32,7 +32,9 @@ nav button.on{color:var(--olv);font-weight:700;box-shadow:inset 0 3px 0 var(--ol
 .kpi b{display:block;font-size:20px}
 .kpi span{color:var(--mut);font-size:12px}
 .wid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:12px}
-@media(min-width:900px){.wid{grid-template-columns:repeat(4,1fr)}}
+@media(min-width:900px){.wid{grid-template-columns:repeat(6,1fr)}}
+.wg.ancho{grid-column:span 2}
+.spark{display:block;width:100%;height:34px;margin-top:4px}
 .wg{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 12px;cursor:pointer;min-height:86px;display:flex;flex-direction:column;gap:2px}
 .wg:hover{border-color:var(--olv)}
 .wg .wt{color:var(--mut);font-size:12px;display:flex;justify-content:space-between;gap:6px}
@@ -167,7 +169,7 @@ details.adv{margin:4px 0 10px}details.adv summary{cursor:pointer;color:var(--olv
 
 <script>
 // ===== Configuración =====
-const VERSION = '2.0';
+const VERSION = '2.4';
 const VERSION_FECHA = '8 oct 2026';
 const CREDITOS = `Olivas v${VERSION} (${VERSION_FECHA}) · © 2026 Alfonso Carrascosa Martínez · Hecha con Claude (Anthropic)`;
 const SUPA_URL = 'https://kseyndjbmkaflpoqitsj.supabase.co';
@@ -364,10 +366,12 @@ const S = {
     {k:'fecha',l:'Fecha',t:'date',def:hoy,req:1,adv:1},{k:'concepto',l:'Concepto',adv:1},
     {k:'maquina_id',l:'Vehículo / máquina',t:'sel',ops:opsMaq(),adv:1},{k:'proveedor',l:'Proveedor',adv:1},{k:'notas',l:'Notas',t:'area',adv:1}]},
   ingresos:{tit:'Cobro', f:()=>[
+    {k:'_scan',t:'html',nuevo:1,html:'<button type="button" class="btn sec" style="width:100%;margin-bottom:10px" onclick="escanearLiq()">Escanear liquidación o ticket en vez de escribir</button>'},
     {k:'tipo',l:'Tipo',t:'chips',ops:ING_TIPOS.map(x=>[x,x]),req:1,def:'Liquidación'},
     {k:'kilos',l:'Kilos de aceituna',t:'num',focus:1},{k:'precio_kg',l:'Precio €/kg',t:'num'},
     {k:'importe',l:'Importe cobrado (€)',t:'num',req:1,big:1,help:'Kilos × precio se calcula solo'},
     {k:'finca_id',l:'Finca',t:'chips',ops:opsFincas(),def:()=>ULT.i_finca??''},
+    ...(almazarasConocidas().length?[{k:'almazara',l:'¿De qué almazara?',t:'chips',ops:[...almazarasConocidas().map(a=>[a,a]),['','Otra']],def:()=>(AJ.venta||{}).coop||''}]:[]),
     {k:'rendimiento',l:'Rendimiento (%)',t:'num',adv:1},
     {k:'fecha',l:'Fecha de cobro',t:'date',def:hoy,req:1,adv:1},{k:'campana',l:'Campaña',def:()=>campDe(hoy()),req:1,adv:1,help:'Se pone sola según la fecha. Formato 2026/27'},
     {k:'notas',l:'Notas',t:'area',adv:1}]},
@@ -558,6 +562,7 @@ function abrir(k, reg=null, ini=null){
     document.querySelectorAll('#frm [data-rtrat]').forEach(x=>x.classList.toggle('on',x===b)); });
   if(k==='tareas') document.querySelectorAll('#frm [data-rtit]').forEach(b=>b.onclick=()=>{ $('#frm [name=titulo]').value=b.dataset.rtit; const t=D.tareas.find(x=>x.titulo===b.dataset.rtit); if(t){ const fb=$(`#frm [data-chips=finca_id] .chip[data-val="${t.finca_id||''}"]`); if(fb) fb.click(); } });
   if(k==='pesadas'){ const al=[...new Set(D.pesadas.map(x=>x.almazara).filter(Boolean))].slice(0,5); const inp=$('#frm [name=almazara]'); if(al.length&&inp) inp.closest('label').insertAdjacentHTML('afterend',`<div class="chips" style="margin-top:-6px">${al.map(a=>`<button type="button" class="chip" onclick="$('#frm [name=almazara]').value=this.textContent">${esc(a)}</button>`).join('')}</div>`); }
+  if(k==='ingresos'&&reg?.foto_path){ const h=$('#frm h3'); if(h) h.insertAdjacentHTML('afterend',`<p><a href="#" onclick="event.preventDefault();verFoto('${reg.foto_path}')">Ver el documento escaneado</a></p>`); }
   if(k==='notas'&&!reg) NOTA_FOTO=null;
   if(k==='notas'&&reg?.foto_path) $('#nFotoTxt').innerHTML=`<a href="#" onclick="event.preventDefault();verFoto('${reg.foto_path}')">ver foto</a>`;
   if(k==='servicios'){
@@ -1023,7 +1028,7 @@ function vPrecios(){
     .map(([k,g])=>{ g.compras.sort((a,b)=>b.fecha.localeCompare(a.fecha)); const con=g.compras.filter(c=>c.precio!=null); const min=con.reduce((m,c)=>!m||c.precio<m.precio?c:m,null); return {k,g,ult:g.compras[0],min}; })
     .sort((a,b)=>b.ult.fecha.localeCompare(a.ult.fecha));
   const sel=SUB.precioSel;
-  return `<div id="carbBox"></div><div class="card"><h2>Precios de productos</h2>
+  return `<div id="aceBox"></div><div id="carbBox"></div><div class="card"><h2>Precios de productos</h2>
     <input id="pBusca" placeholder="Buscar producto o proveedor" value="${esc(SUB.precioQ||'')}" style="margin-bottom:8px">
     ${lista.length?`<table><tr><th>Producto</th><th class="n">Último</th><th class="n">Más barato</th></tr>${lista.map(({k,g,ult,min})=>`<tr class="click" data-psel="${esc(k)}"><td>${esc(g.nombre)}<div class="mut">${g.compras.length} ${g.compras.length===1?'compra':'compras'}</div></td><td class="n">${ult.precio!=null?eur(ult.precio):'—'}${ult.unidad?'/'+esc(ult.unidad):''}<div class="mut">${esc(ult.proveedor||'')} · ${fFecha(ult.fecha)}</div></td><td class="n">${min?eur(min.precio):'—'}<div class="mut">${min?esc(min.proveedor||''):''}</div></td></tr>
       ${sel===k?`<tr><td colspan="3" style="background:rgba(127,127,100,.07)"><table>${g.compras.map(c=>`<tr class="click" onclick="verFactura('${c.factura}')"><td>${fFecha(c.fecha)}<div class="mut">${esc(c.proveedor||'')}</div></td><td class="n">${c.cantidad!=null?num(c.cantidad,2)+' '+esc(c.unidad||''):''}</td><td class="n ${min&&c.precio===min.precio?'pos':''}">${c.precio!=null?eur(c.precio):'—'}</td></tr>`).join('')}</table></td></tr>`:''}`).join('')}</table>`
@@ -1031,6 +1036,7 @@ function vPrecios(){
 }
 function postPrecios(){
   if($('#carbBox')) pintarCarburantes();
+  if($('#aceBox')) pintarAceite();
   const b=$('#pBusca'); if(!b) return;
   b.oninput=()=>{ SUB.precioQ=b.value; const pos=b.selectionStart; render(); const nb=$('#pBusca'); nb.focus(); nb.setSelectionRange(pos,pos); };
   document.querySelectorAll('[data-psel]').forEach(tr=>tr.onclick=()=>{ SUB.precioSel = SUB.precioSel===tr.dataset.psel ? null : tr.dataset.psel; render(); });
@@ -1556,7 +1562,7 @@ function postCalc(){
 const EN_COSECHA=()=>[10,11,12,1,2,3].includes(new Date().getMonth()+1);
 const APUNTAR=[
   ['Gasto','💶',"abrir('gastos')"],['Jornada','👷',"abrirParte()"],['Pesada','⚖️',"abrir('pesadas')"],['Curación','💧',"abrirAplicacion()"],
-  ['Factura','📄',"escanear()"],['Nota de campo','📝',"abrir('notas')"],['Tarea','✅',"abrir('tareas')"],['Cobro','💰',"abrir('ingresos')"],
+  ['Factura','📄',"escanear()"],['Nota de campo','📝',"abrir('notas')"],['Tarea','✅',"abrir('tareas')"],['Cobro','💰',"abrir('ingresos')"],['Escanear liquidación','🧾',"escanearLiq()"],
   ['Reunión o cita','📅',"abrir('reuniones')"],['Día perdido','🌧️',"abrir('dias_perdidos')"],['Recibo de riego','🚿',"abrir('riego_pagos')",'mas:riego'],['Producto al almacén','📦',"abrir('almacen')",'campo:almacen'],
 ];
 function abrirApuntar(fid){
@@ -1763,6 +1769,8 @@ const MAPA=[
   ['Jornadas por trabajador para la Seguridad Social','Jornales → Gente y empresas → Carnés',"abrirJornadasSS()"],
   ['Copia de seguridad','Más → Ajustes, al final',"abrirCopia()"],
   ['Ocultar secciones que no uso','Más → Ajustes → Secciones que uso',"SUB.mas='ajustes';ir('mas')"],
+  ['Cooperativa o puesto de compra: cuánto te pagarían hoy','Cuentas → Precios, arriba',"SUB.cuentas='precios';ir('cuentas')"],
+  ['Escanear una liquidación, anticipo o ticket de la almazara','Cuentas → Cobros, o el botón +',"escanearLiq()"],
   ['DAT para llevar la aceituna a la almazara','Cosecha → «DAT», o Más → Cuaderno',"abrirDAT()"],
   ['Cuaderno de campo (modelo Junta)','Campo → Curaciones → «Cuaderno de campo»',"abrirCuaderno()"],
   ['Cubas estándar (tus mezclas de siempre)','Campo → Curaciones, al final',"SUB.campo='trat';ir('campo')"],
@@ -2011,7 +2019,7 @@ function vIngresos(){
   const l=D.ingresos.filter(i=>i.campana===CAMP&&(fF==='*'||(i.finca_id||'')===fF));
   const tot=l.reduce((s,i)=>s+Number(i.importe),0), kg=l.reduce((s,i)=>s+(Number(i.kilos)||0),0);
   const liq=l.filter(i=>i.kilos&&i.rendimiento); const rm = liq.length? liq.reduce((s,i)=>s+i.kilos*i.rendimiento,0)/liq.reduce((s,i)=>s+Number(i.kilos),0):0;
-  return `<div class="card"><h2>Cobros ${esc(CAMP)}<span class="sp"></span><button class="btn sec sm" onclick="csv('ingresos')">CSV</button></h2>
+  return `<div class="card"><h2>Cobros ${esc(CAMP)}<span class="sp"></span><button class="btn sm" onclick="escanearLiq()">Escanear liquidación</button> <button class="btn sec sm" onclick="csv('ingresos')">CSV</button></h2>
   ${filtroFinca('ingresos')}
   <p class="mut">${l.length} ingresos · <b>${eur(tot)}</b>${kg?` · ${num(kg)} kg · ${eur(tot/kg)}/kg medio`:''}${rm?` · rendimiento medio ${num(rm,2)} %`:''}</p>
   ${l.length?`<div class="scroll"><table><tr><th>Fecha</th><th>Tipo</th><th>Finca</th><th class="n">Kilos</th><th class="n">Importe</th></tr>${l.map(i=>`<tr class="click" data-ed="ingresos:${i.id}"><td>${fFecha(i.fecha)}</td><td>${esc(i.tipo)}${i.rendimiento?`<div class="mut">${num(i.rendimiento,2)} % · ${i.precio_kg?eur(i.precio_kg)+'/kg':''}</div>`:''}</td><td>${i.finca_id?esc(fincaNom(i.finca_id)):'<span class="tag">Común</span>'}</td><td class="n">${i.kilos?num(i.kilos):''}</td><td class="n">${eur(i.importe)}</td></tr>`).join('')}</table></div>`:'<p class="mut">No hay ingresos en esta campaña.</p>'}</div>`;
@@ -2264,7 +2272,7 @@ function postMas(){
 }
 
 // ===== Secciones visibles =====
-const SECCIONES=[['inicio:w_tiempo','Inicio: tiempo'],['inicio:w_gasoil','Inicio: precio del gasoil'],['inicio:w_lluvia','Inicio: lluvia caída'],['inicio:w_cita','Inicio: próxima cita o plazo'],['mas:riego','Riego (Más)'],['campo:tecnico','Técnico (Campo)'],['campo:reun','Reuniones (Campo)'],['campo:almacen','Almacén (Campo)'],['campo:calc','Calcular dosis (Campo)'],['cuentas:facturas','Facturas (Cuentas)'],['cuentas:precios','Precios (Cuentas)'],['cuentas:papeles','Papeles y plazos (Cuentas)']];
+const SECCIONES=[['inicio:w_tiempo','Inicio: tiempo'],['inicio:w_aceite','Inicio: precio del aceite'],['inicio:w_gasoil','Inicio: precio del gasoil'],['inicio:w_lluvia','Inicio: lluvia caída'],['inicio:w_cita','Inicio: próxima cita o plazo'],['mas:riego','Riego (Más)'],['campo:tecnico','Técnico (Campo)'],['campo:reun','Reuniones (Campo)'],['campo:almacen','Almacén (Campo)'],['campo:calc','Calcular dosis (Campo)'],['cuentas:facturas','Facturas (Cuentas)'],['cuentas:precios','Precios (Cuentas)'],['cuentas:papeles','Papeles y plazos (Cuentas)']];
 function visto(k){ return !(AJ.ocultar||[]).includes(k); }
 
 // ===== Reuniones =====
@@ -2545,11 +2553,11 @@ function plazosAlDia(){ if(PLAZOS_MIRADO||!navigator.onLine) return; const w=AJ.
 
 
 // ===== Widgets de Inicio =====
-const WIDGETS=[['w_tiempo','Tiempo',"ir('tiempo')"],['w_gasoil','Gasóleo B',"SUB.cuentas='precios';ir('cuentas')"],['w_lluvia','Lluvia',"ir('tiempo')"],['w_cita','Próximo',"SUB.campo='reun';ir('campo')"]];
+const WIDGETS=[['w_tiempo','Tiempo',"ir('tiempo')"],['w_gasoil','Gasóleo B',"SUB.cuentas='precios';ir('cuentas')"],['w_lluvia','Lluvia',"ir('tiempo')"],['w_cita','Próximo',"SUB.campo='reun';ir('campo')"],['w_aceite','Aceite en origen',"SUB.cuentas='precios';ir('cuentas')"]];
 function fincaPrincipal(){ const l=D.fincas.filter(f=>f.activa&&f.lat!=null&&f.lon!=null); return l.find(f=>f.id===ULT.t_tiempo)||l[0]; }
 function htmlWidgets(){
   const w=WIDGETS.filter(([k])=>visto('inicio:'+k)); if(!w.length) return '';
-  return `<div class="wid">${w.map(([k,t,fn])=>`<div class="wg" id="${k}" onclick="${fn}"><div class="wt"><span>${t}</span></div><div class="wv mut" style="font-size:14px;font-weight:400">…</div></div>`).join('')}</div>`;
+  return `<div class="wid">${w.map(([k,t,fn])=>`<div class="wg ${k==='w_aceite'?'ancho':''}" id="${k}" onclick="${fn}"><div class="wt"><span>${t}</span></div><div class="wv mut" style="font-size:14px;font-weight:400">…</div></div>`).join('')}</div>`;
 }
 function proximaCita(){
   const h=hoy(), y=+h.slice(0,4), l=[];
@@ -2562,6 +2570,10 @@ function cuando(fecha){ const d=difDias(hoy(),fecha); return d===0?'Hoy':d===1?'
 async function pintarWidgets(){
   const put=(k,html,fn)=>{ const el=$('#'+k); if(!el) return; el.innerHTML=`<div class="wt"><span>${WIDGETS.find(x=>x[0]===k)[1]}</span>${html.tag||''}</div><div class="wv">${html.v}</div><div class="ws">${html.s||''}</div>`; if(fn) el.setAttribute('onclick',fn); };
   if($('#w_cita')){ const c=proximaCita(); put('w_cita', c?{v:`<span style="font-size:16px">${esc(c.t.length>38?c.t.slice(0,36)+'…':c.t)}</span>`,s:`${cuando(c.fecha)}${c.s?' · '+esc(c.s):''}`,tag:''}:{v:'<span style="font-size:15px" class="mut">Nada a la vista</span>',s:'Reuniones, plazos y tareas'}, c?.fn); }
+  if($('#w_aceite')) cargarAceite().then(A=>{ if(!A.ult.extra){ put('w_aceite',{v:'<span class="mut" style="font-size:14px">Sin datos</span>'}); return; }
+      const fl=(t)=>{ const v=A.var7[t]; return v==null?'':`<span class="${v<0?'neg':'pos'}" style="font-size:12px;font-weight:600">${v<0?'▼':'▲'} ${num(Math.abs(v),1)} %</span>`; };
+      put('w_aceite',{tag:`<span>${fFecha(A.ult.extra.fecha)}</span>`,v:`${num(A.ult.extra.eur_kg,2)} €/kg <span class="mut" style="font-size:12px;font-weight:400">virgen extra</span> ${fl('extra')}`,
+        s:`Virgen ${num(A.ult.virgen?.eur_kg,2)} ${fl('virgen')} · Lampante ${num(A.ult.lampante?.eur_kg,2)} ${fl('lampante')}${A.puesto?` · en un puesto hoy ≈ <b>${num(A.puesto.v,3)} €/kg</b> de aceituna`:''}${sparkAceite(A.serie.extra.slice(-45))}`}); }).catch(()=>{});
   const f=fincaPrincipal();
   if($('#w_tiempo')){ if(!f) put('w_tiempo',{v:'<span class="mut" style="font-size:14px">Pon coordenadas a una finca</span>'}); else getMeteo(f).then(w=>{ const ev=evaluarTiempo(w,f); const d=ev.find(x=>x.fecha===hoy())||ev[0], m=ev.find(x=>x.fecha===addDias(hoy(),1));
       put('w_tiempo',{tag:`<span>${esc(f.nombre)}</span>`,v:`<span class="ic">${WICO(d.code)}</span>${num(d.tmin)}–${num(d.tmax)}°`,s:`${d.lluvia>0?num(d.lluvia,1)+' mm · ':''}olivo: <span class="dot ${d.work.c}"></span>${d.work.c==='g'?'bien':d.work.c==='a'?'regular':'mojado'}${m?` · mañana ${WICO(m.code)} ${num(m.tmax)}°`:''}`}); }).catch(()=>put('w_tiempo',{v:'<span class="mut" style="font-size:14px">Sin conexión</span>'})); }
@@ -2570,6 +2582,168 @@ async function pintarWidgets(){
       put('w_gasoil',{v:g.gasoleo_b?`${num(g.gasoleo_b,3)} €`:'—',s:`${esc(g.rotulo)}${min&&min.id!==g.id&&min.gasoleo_b<g.gasoleo_b?` · más barato: ${esc(min.rotulo)} ${num(min.gasoleo_b,3)}`:' · el más barato cerca'}`}); }).catch(()=>{});
   if($('#w_lluvia')){ if(!f) put('w_lluvia',{v:'—'}); else lluviaReal(f).then(L=>{ if(!L){ put('w_lluvia',{v:'<span class="mut" style="font-size:14px">Sin estación cerca</span>'}); return; }
       put('w_lluvia',{tag:`<span>${esc(L.est.municipio||'')}</span>`,v:`${num(L.d7,1)} mm <span class="mut" style="font-size:12px;font-weight:400">7 días</span>`,s:`hoy ${num(L.hoy,1)} · desde sept. ${num(L.camp,1)} mm${L.desde>L.sep?'*':''}`}); }).catch(()=>{}); }
+}
+
+
+// ===== Precio del aceite (Oleista, CC BY 4.0) =====
+let ACE=null;
+async function cargarAceite(){
+  if(ACE&&Date.now()-ACE.t<30*60e3) return ACE;
+  const {data}=await sb.from('olv_aceite').select('*').gte('fecha',addDias(hoy(),-120));
+  const l=(data||[]).sort((a,b)=>a.fecha.localeCompare(b.fecha)); const serie={extra:[],virgen:[],lampante:[]};
+  l.forEach(r=>serie[r.tipo]&&serie[r.tipo].push(r));
+  const ult={}, var7={};
+  Object.entries(serie).forEach(([t,s])=>{ const u=s[s.length-1]; ult[t]=u; if(!u) return; const ant=[...s].reverse().find(r=>r.fecha<=addDias(u.fecha,-7)); if(ant) var7[t]=(u.eur_kg/ant.eur_kg-1)*100; });
+  // valor aproximado de tu aceite de esta campaña (kilos × rendimiento × precio virgen extra)
+  ACE={t:Date.now(),serie,ult,var7}; ACE.puesto=puestoHoy(ACE); return ACE;
+}
+function sparkAceite(s,alto=34){
+  if(!s||s.length<2) return '';
+  const v=s.map(r=>Number(r.eur_kg)), mn=Math.min(...v), mx=Math.max(...v), w=300, rg=(mx-mn)||1;
+  const pts=v.map((y,i)=>`${(i/(v.length-1)*w).toFixed(1)},${(alto-3-(y-mn)/rg*(alto-6)).toFixed(1)}`).join(' ');
+  return `<svg class="spark" viewBox="0 0 ${w} ${alto}" preserveAspectRatio="none" style="height:${alto}px" aria-hidden="true"><polyline points="${pts}" fill="none" stroke="var(--olv)" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>`;
+}
+async function pintarAceite(){
+  const box=$('#aceBox'); if(!box) return; let A; try{ A=await cargarAceite(); }catch(e){ return; } if(!$('#aceBox')) return;
+  if(!A.ult.extra){ box.innerHTML=''; return; }
+  const fila=(t,n)=>{ const u=A.ult[t]; if(!u) return ''; const v=A.var7[t], s=A.serie[t]; const mx=Math.max(...s.map(r=>+r.eur_kg)), mn=Math.min(...s.map(r=>+r.eur_kg));
+    return `<tr><td><b>${n}</b>${sparkAceite(s.slice(-90),40)}<div class="mut">últimos 3 meses: entre ${num(mn,2)} y ${num(mx,2)} €/kg</div></td><td class="n"><b style="font-size:18px">${num(u.eur_kg,2)}</b> €/kg${v!=null?`<div class="${v<0?'neg':'pos'}">${v<0?'▼':'▲'} ${num(Math.abs(v),1)} % en 7 días</div>`:''}</td></tr>`; };
+  box.innerHTML=htmlDondeEntregar(A)+`<div class="card"><h2>Aceite de oliva en origen · España</h2><table>${fila('extra','Virgen extra')}${fila('virgen','Virgen')}${fila('lampante','Lampante')}</table>
+    <p class="mut">Precio medio a granel del ${fFecha(A.ult.extra.fecha)}, sin IVA. Datos de <a href="https://oleista.com/es/precios" target="_blank" rel="noopener">Oleista</a> (licencia CC BY 4.0), que se leen tres veces al día. Lo que te pague tu almazara puede ser distinto.</p></div>`;
+  postDondeEntregar();
+}
+
+
+// ===== ¿Dónde entregar? Puesto de compra (paga por rendimiento a precio de mercado) vs cooperativa =====
+const CAT_N={extra:'virgen extra',virgen:'virgen',lampante:'lampante'};
+function almazarasConocidas(){ return [...new Set([...(AJ.venta?.coop?[AJ.venta.coop]:[]),...D.pesadas.map(p=>(p.almazara||'').trim()),...D.ingresos.map(i=>(i.almazara||'').trim())].filter(Boolean))].slice(0,8); }
+function esCoop(nom){ const c=(AJ.venta||{}).coop; if(!c||!(nom||'').trim()) return true; return mismaAlm(nom,c); }
+function rendRef(){ const V=AJ.venta||{}; if(V.rend) return Number(V.rend);
+  const c0=parseInt(campDe(hoy())), ps=D.pesadas.filter(p=>p.rendimiento&&parseInt(campDe(p.fecha))>=c0-1);
+  const k=ps.reduce((a,p)=>a+Number(p.kilos),0); return k?Math.round(ps.reduce((a,p)=>a+p.kilos*p.rendimiento,0)/k*100)/100:null; }
+const CORR_U={pct:'% menos sobre el precio del aceite',aceite:'€ menos por kg de aceite',aceituna:'€ menos por kg de aceituna'};
+function corrector(){ const V=AJ.venta||{}; if(V.corr!=null) return {n:Number(V.corr)||0,u:V.corr_u||'pct'}; return V.desc?{n:Number(V.desc),u:'aceituna'}:{n:0,u:V.corr_u||'pct'}; }
+function puestoHoy(A){ const V=AJ.venta||{}, cat=V.cat||'extra', u=A.ult[cat], r=rendRef(); if(!u||!r) return null;
+  const C=corrector(), precio=Number(u.eur_kg); let pa=precio;
+  if(C.u==='pct') pa=precio*(1-C.n/100); else if(C.u==='aceite') pa=precio-C.n;
+  let v=r/100*pa; if(C.u==='aceituna') v-=C.n;
+  return {v:Math.max(0,v),bruto:r/100*precio,r,cat,precio,pa,C,fecha:u.fecha}; }
+function coopCampanas(A){
+  const camps=[...new Set(D.ingresos.filter(i=>/Liquidaci|Anticipo/.test(i.tipo||'')).map(i=>i.campana))].sort().reverse().slice(0,4);
+  return camps.map(c=>{ const [ini,fin]=campRango(c);
+    const imp=D.ingresos.filter(i=>i.campana===c&&/Liquidaci|Anticipo/.test(i.tipo||'')&&esCoop(i.almazara)).reduce((a,i)=>a+Number(i.importe),0);
+    const ps=D.pesadas.filter(p=>p.fecha>=ini&&p.fecha<=fin&&esCoop(p.almazara)); const kg=ps.reduce((a,p)=>a+Number(p.kilos),0);
+    const kr=ps.filter(p=>p.rendimiento), kgr=kr.reduce((a,p)=>a+Number(p.kilos),0), rend=kgr?kr.reduce((a,p)=>a+p.kilos*p.rendimiento,0)/kgr:null;
+    const kgAc=Number(D.ingresos.filter(i=>i.campana===c&&esCoop(i.almazara)).reduce((a,i)=>a+(Number(i.kilos)||0),0));
+    const kilos=kg||kgAc; if(!imp||!kilos) return null;
+    const ser=(A?.serie[(AJ.venta||{}).cat||'extra']||[]).filter(r=>r.fecha>=ini&&r.fecha<=fin); const merc=ser.length>=250?ser.reduce((a,r)=>a+Number(r.eur_kg),0)/ser.length:null;
+    const eAce=rend?imp/(kilos*rend/100):null;
+    return {c,imp,kilos,rend,eAce,eAcei:imp/kilos,merc,ratio:merc&&eAce?eAce/merc:null,diasMerc:ser.length};
+  }).filter(Boolean);
+}
+function htmlDondeEntregar(A){
+  const V=AJ.venta||{}, P=puestoHoy(A), C=coopCampanas(A), al=almazarasConocidas();
+  const ult=C[0];
+  const comp = P&&ult ? (()=>{ const d=P.v-ult.eAcei; return `<div class="aviso ${d>0?'':'ok'}" style="margin-top:8px">Hoy un puesto te pagaría <b>${num(P.v,3)} €/kg</b>; la cooperativa te pagó <b>${num(ult.eAcei,3)} €/kg</b> en ${esc(ult.c)}${ult.c===campDe(hoy())?' (de momento)':''}. ${Math.abs(d)<0.01?'Prácticamente igual.':d>0?`El puesto, ${num(d,3)} €/kg más (${eur(d*1000)} cada 1.000 kg).`:`La cooperativa, ${num(-d,3)} €/kg más.`} Ojo: el precio de la cooperativa es de otra campaña y otro mercado.</div>`; })() : '';
+  return `<div class="card"><h2>¿Cooperativa o puesto de compra?</h2>
+    <b>Puesto de compra, a precio de hoy</b>
+    ${P?`<div class="kpis" style="margin-top:6px"><div class="kpi"><span>Te pagarían por kg de aceituna</span><b>${num(P.v,3)} €</b></div><div class="kpi"><span>Por cada 1.000 kg</span><b>${eur(P.v*1000)}</b></div></div>
+      <p class="mut">${num(P.r,2)} % de rendimiento × ${num(P.precio,3)} €/kg (${CAT_N[P.cat]}, ${fFecha(P.fecha)})${!P.C.n?' · <b>sin índice corrector</b>: pon el del puesto abajo, si no sale de más':P.C.u==='pct'?` − ${num(P.C.n,2)} % de índice corrector (aceite a ${num(P.pa,3)} €/kg)`:P.C.u==='aceite'?` − ${num(P.C.n,3)} €/kg de aceite de índice corrector (aceite a ${num(P.pa,3)} €/kg)`:` − ${num(P.C.n,3)} €/kg de aceituna de índice corrector`}. Sin corrector serían ${num(P.bruto,3)} €/kg.</p>`
+     :`<p class="mut">${rendRef()?'Sin precio del aceite todavía.':'Pon tu rendimiento abajo (o apunta pesadas con rendimiento) para calcularlo.'}</p>`}
+    <div class="grid2"><label>Rendimiento a usar (%)<input id="vRend" inputmode="decimal" value="${V.rend!=null?String(V.rend).replace('.',','):''}" placeholder="${rendRef()?'tu media: '+num(rendRef(),2):'p. ej. 21'}"></label>
+      <label>Índice corrector del puesto<input id="vCorr" inputmode="decimal" value="${corrector().n?String(corrector().n).replace('.',','):''}" placeholder="pregúntalo en el puesto"></label></div>
+    <div class="chips" style="margin-top:-6px">${Object.entries(CORR_U).map(([k,t])=>`<button class="chip ${corrector().u===k?'on':''}" onclick="AJ.venta={...(AJ.venta||{}),corr:corrector().n,corr_u:'${k}'};ACE=null;guardarAjustes(true);pintarAceite()">${t}</button>`).join('')}</div>
+    <span class="clab">Precio de referencia del puesto</span><div class="chips">${Object.entries(CAT_N).map(([k,n])=>`<button class="chip ${(V.cat||'extra')===k?'on':''}" onclick="AJ.venta={...(AJ.venta||{}),cat:'${k}'};ACE=null;guardarAjustes(true);render()">${n}</button>`).join('')}</div>
+    <b>Cooperativa: lo que te ha pagado</b>
+    ${al.length?`<div class="chips" style="margin-top:6px"><span class="mut" style="align-self:center">Tu cooperativa:</span>${al.map(a=>`<button class="chip ${V.coop===a?'on':''}" onclick="AJ.venta={...(AJ.venta||{}),coop:'${esc(a).replace(/'/g,"\\'")}'};guardarAjustes(true);render()">${esc(a)}</button>`).join('')}</div>`:''}
+    ${C.length?`<div class="scroll"><table><tr><th>Campaña</th><th class="n">€/kg aceituna</th><th class="n">Rend.</th><th class="n">€/kg aceite</th><th class="n">Mercado medio</th></tr>${C.map(r=>`<tr><td>${esc(r.c)}<div class="mut">${num(r.kilos)} kg · ${eur(r.imp)}</div></td><td class="n"><b>${num(r.eAcei,3)}</b></td><td class="n">${r.rend?num(r.rend,1)+' %':'—'}</td><td class="n">${r.eAce?num(r.eAce,3):'—'}</td><td class="n">${r.merc?`${num(r.merc,3)}<div class="${r.ratio>=1?'pos':'neg'}">${num(r.ratio*100,0)} % del mercado</div>`:'<span class="mut">sin datos</span>'}</td></tr>`).join('')}</table></div>`
+      :`<p class="mut">Cuando apuntes las liquidaciones de la cooperativa (Cuentas → Cobros) y las pesadas, aquí verás cuánto te pagó por kilo de aceituna y de aceite, y cómo queda frente al mercado.</p>`}
+    ${comp}
+    <p class="mut">Los puestos pagan según Poolred; aquí uso la media de mercado de Oleista, que va muy parecida. La comparación con el mercado solo sale en campañas con datos de precios (se guardan desde julio de 2026).</p></div>`;
+}
+function postDondeEntregar(){
+  const g=()=>{ AJ.venta={...(AJ.venta||{}),rend:pn($('#vRend')?.value)||null,corr:pn($('#vCorr')?.value)||0,corr_u:corrector().u}; delete AJ.venta.desc; ACE=null; guardarAjustes(true); pintarAceite(); };
+  ['#vRend','#vCorr'].forEach(s=>{ const el=$(s); if(el) el.onchange=g; });
+}
+
+// ===== Escanear liquidaciones, anticipos y ventas en puesto =====
+function escanearLiq(){
+  if(!navigator.onLine){ toast('Para leer un documento necesitas cobertura'); return; }
+  if($('#dlg').open) $('#dlg').close();
+  const i=document.createElement('input'); i.type='file'; i.accept='image/*,application/pdf';
+  i.onchange=()=>{ if(i.files[0]) leerLiq(i.files[0]); }; i.click();
+}
+async function leerLiq(file){
+  $('#frm').oninput=null; $('#frm').onchange=null; $('#frm').onsubmit=e=>e.preventDefault();
+  $('#frm').innerHTML=`<h3>Leyendo el documento…</h3><p class="mut">Tarda entre 10 y 30 segundos.</p><div class="bar"><i style="width:100%;animation:none"></i></div>`;
+  $('#dlg').showModal();
+  try{
+    const {blob,mime}=await prepararArchivo(file); const data=await aB64(blob);
+    const {data:res,error}=await sb.functions.invoke('leer-factura',{body:{data,mime,tipo:'liquidacion'}});
+    if(error){ let m=error.message; try{ const j=await error.context.json(); m=j.error||m; }catch(e){} throw new Error(m); }
+    if(!res?.datos) throw new Error(res?.error||'No se pudo leer');
+    revisarLiq(res.datos, blob, mime, res.proveedor_ia);
+  }catch(e){
+    $('#frm').innerHTML=`<h3>No se pudo leer</h3><p class="neg">${esc(e.message)}</p><p class="mut">Prueba con otra foto (bien iluminada, entera) o apúntalo a mano como cobro.</p><div class="row" style="justify-content:flex-end"><button type="button" class="btn sec" onclick="$('#dlg').close()">Cerrar</button><button type="button" class="btn" onclick="$('#dlg').close();abrir('ingresos')">Apuntar a mano</button></div>`;
+  }
+}
+function normAlm(n){ return (n||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9 ]/g,'').split(/\s+/).filter(w=>w&&!['sca','sa','sl','sat','sociedad','cooperativa','coop','andaluza','and','de','del','la','el','los','las','y','almazara','aceites','oleicola'].includes(w)).join(' '); }
+function mismaAlm(a,b){ const x=normAlm(a), y=normAlm(b); return !!x&&!!y&&(x===y||x.includes(y)||y.includes(x)); }
+const TIPO_LIQ={liquidacion:'Liquidación',anticipo:'Anticipo',complementaria:'Liquidación complementaria',venta_puesto:'Liquidación'};
+function revisarLiq(d, blob, mime, ia){
+  const fmt=v=>v==null?'':String(v).replace('.',',');
+  const okF=f=>/^\d{4}-\d{2}-\d{2}$/.test(f||'');
+  const fecha=okF(d.fecha)?d.fecha:hoy(), camp=/^\d{4}\/\d{2}$/.test(d.campana||'')?d.campana:campDe(d.fecha&&okF(d.fecha)?addDias(d.fecha,-120):hoy());
+  const conocida=almazarasConocidas().find(a=>mismaAlm(a,d.almazara));
+  const almDef=conocida||d.almazara||'';
+  const al=[...new Set([almDef,...almazarasConocidas()].filter(Boolean))].slice(0,8);
+  const tipo=TIPO_LIQ[d.tipo_documento]||'Liquidación';
+  const neto=d.importe_neto??d.importe_bruto;
+  const ent=(d.entregas||[]).filter(e=>okF(e.fecha)&&Number(e.kilos)>0);
+  const yaEsta=e=>D.pesadas.some(p=>(e.ticket&&p.ticket&&String(p.ticket)===String(e.ticket))||(p.fecha===e.fecha&&Math.abs(Number(p.kilos)-Number(e.kilos))<1));
+  const nuevas=ent.filter(e=>!yaEsta(e));
+  const soloTicket=d.tipo_documento==='ticket_entrega';
+  const fincas=opsFincas(false).slice(1);
+  const desc=(d.descuentos||[]).filter(x=>x&&x.importe);
+  const dup=D.ingresos.find(i=>i.fecha===fecha&&Math.abs(Number(i.importe)-Number(neto||0))<0.01);
+  $('#frm').innerHTML=`<h3>Revisar ${soloTicket?'entregas':'liquidación'}</h3>
+    <p class="mut">Leído por ${ia==='gemini'?'Gemini':'Claude'}${d.resumen?': '+esc(d.resumen):''}. Repasa sobre todo el importe y los kilos.</p>
+    ${dup?`<p class="neg">Ya tienes un cobro de ${eur(dup.importe)} del ${fFecha(dup.fecha)}.</p>`:''}
+    ${soloTicket?'':`<label>Lo que cobras (€) *<input name="importe" class="big" inputmode="decimal" value="${fmt(neto)}"></label>
+    <span class="clab">Tipo</span><div class="chips" data-chips="tipo">${ING_TIPOS.slice(0,3).map(t=>`<button type="button" class="chip ${t===tipo?'on':''}" data-val="${t}">${t}</button>`).join('')}</div><input type="hidden" name="tipo" value="${tipo}">`}
+    <span class="clab">Almazara${d.tipo_documento==='venta_puesto'?' (puesto de compra)':''}</span><div class="chips" data-chips="almazara">${al.map(a=>`<button type="button" class="chip ${a===almDef?'on':''}" data-val="${esc(a)}">${esc(a)}</button>`).join('')}</div><input type="hidden" name="almazara" value="${esc(almDef)}">
+    <div class="grid2"><label>Kilos de aceituna<input name="kilos" inputmode="decimal" value="${fmt(d.kilos_aceituna)}"></label><label>Rendimiento (%)<input name="rendimiento" inputmode="decimal" value="${fmt(d.rendimiento_pct)}"></label></div>
+    ${soloTicket?'':`<div class="grid2"><label>Fecha<input type="date" name="fecha" value="${fecha}"></label><label>Campaña<input name="campana" value="${esc(camp)}"></label></div>
+    <span class="clab">Finca</span><div class="chips" data-chips="finca_id">${opsFincas().map(([v,t])=>`<button type="button" class="chip ${v===''?'on':''}" data-val="${esc(v)}">${esc(t)}</button>`).join('')}</div><input type="hidden" name="finca_id" value="">`}
+    ${(d.kilos_aceite||d.precio_kg_aceite||d.compensacion_reagp||d.retencion_irpf||desc.length||d.indice_corrector)?`<div class="lab" style="margin:8px 0"><b>Detalle leído</b><div class="mut">${[
+      d.kilos_aceite?`${num(d.kilos_aceite)} kg de aceite`:'', d.precio_kg_aceite?`${num(d.precio_kg_aceite,3)} €/kg de aceite`:'', d.precio_kg_aceituna?`${num(d.precio_kg_aceituna,3)} €/kg de aceituna`:'', d.categoria_aceite?esc(d.categoria_aceite):'',
+      d.indice_corrector?'índice corrector '+esc(d.indice_corrector):'', d.importe_bruto!=null?'bruto '+eur(d.importe_bruto):'', d.compensacion_reagp?'compensación IVA (REAGP) '+eur(d.compensacion_reagp):'', d.retencion_irpf?'retención IRPF '+eur(d.retencion_irpf):'',
+      ...desc.map(x=>`${esc(x.concepto||'descuento')} ${eur(x.importe)}`)].filter(Boolean).join(' · ')}</div></div>`:''}
+    ${ent.length?`<div class="lab" style="margin:8px 0"><label class="chk"><input type="checkbox" name="crearP" ${nuevas.length?'checked':''}> Apuntar también ${nuevas.length?`las <b>${nuevas.length}</b> pesadas nuevas`:'las pesadas'} (${ent.length-nuevas.length?`${ent.length-nuevas.length} ya las tenías`:'ninguna estaba apuntada'})</label>
+      <div class="mut">${ent.slice(0,8).map(e=>`${fFecha(e.fecha)} · ${num(e.kilos)} kg${e.rendimiento_pct?' · '+num(e.rendimiento_pct,1)+' %':''}${e.paraje?' · '+esc(e.paraje):''}${yaEsta(e)?' (ya está)':''}`).join('<br>')}${ent.length>8?`<br>… y ${ent.length-8} más`:''}</div>
+      ${fincas.length>1?`<span class="clab">Finca de esas pesadas</span><div class="chips" data-chips="p_finca">${fincas.map(([v,t],k)=>`<button type="button" class="chip ${k===0?'on':''}" data-val="${esc(v)}">${esc(t)}</button>`).join('')}</div><input type="hidden" name="p_finca" value="${esc(fincas[0]?.[0]||'')}">`:`<input type="hidden" name="p_finca" value="${esc(fincas[0]?.[0]||'')}">`}</div>`:''}
+    <div class="row acciones" style="justify-content:flex-end"><button type="button" class="btn sec" id="fCancel">Cancelar</button><button class="btn" id="fOk">Guardar</button></div>`;
+  const F=$('#frm'); activarChips(F); $('#fCancel').onclick=()=>$('#dlg').close();
+  F.onsubmit=async e=>{ e.preventDefault();
+    const imp=soloTicket?null:n2(F.importe.value); if(!soloTicket&&!(imp>0)){ toast('Pon lo que cobras'); return; }
+    if(soloTicket&&!(F.crearP&&F.crearP.checked)){ toast('No hay nada que guardar'); return; }
+    $('#fOk').disabled=true; $('#fOk').textContent='Guardando…';
+    try{
+      const alm=F.almazara.value.trim()||null, kg=n2(F.kilos.value), rend=n2(F.rendimiento.value);
+      if(!soloTicket){
+        const {data:{user}}=await sb.auth.getUser(); const id=nuevoId(); const path=`${user.id}/liquidaciones/${id}.${mime==='application/pdf'?'pdf':'jpg'}`;
+        const up=await sb.storage.from('olv-facturas').upload(path, blob, {contentType:mime});
+        const notas=[d.resumen, d.kilos_aceite?`${num(d.kilos_aceite)} kg aceite`:'', d.precio_kg_aceite?`${num(d.precio_kg_aceite,3)} €/kg aceite`:'', d.compensacion_reagp?`REAGP ${eur(d.compensacion_reagp)}`:'', d.retencion_irpf?`IRPF ${eur(d.retencion_irpf)}`:'', d.numero?`Doc. ${d.numero}`:''].filter(Boolean).join(' · ');
+        const r=await insertar('ingresos',{id, fecha:F.fecha.value||hoy(), campana:F.campana.value.trim()||campDe(hoy()), tipo:F.tipo.value||'Liquidación', finca_id:F.finca_id.value||null, kilos:kg, rendimiento:rend, precio_kg:kg?Math.round(imp/kg*10000)/10000:null, importe:imp, almazara:alm, notas:notas||null, foto_path:up.error?null:path});
+        if(!r.ok){ if(!up.error) await sb.storage.from('olv-facturas').remove([path]); throw r.error; }
+      }
+      let np=0;
+      if(F.crearP&&F.crearP.checked){ const fid=F.p_finca.value||null; const filas=nuevas.map(x=>({fecha:x.fecha, kilos:Number(x.kilos), rendimiento:x.rendimiento_pct??null, ticket:x.ticket?String(x.ticket):null, tipo:/suelo/i.test(x.tipo||'')?'Suelo':'Vuelo', almazara:alm, finca_id:fid, notas:x.paraje?`Paraje: ${x.paraje}`:null}));
+        if(filas.length){ const r=await insertar('pesadas',filas); if(!r.ok) throw r.error; np=filas.length; } }
+      $('#dlg').close(); await Promise.all(['ingresos','pesadas'].map(cargar)); ACE=null; pintarCampanas(); render();
+      toast(`${soloTicket?'':`Cobro de ${eur(imp)} guardado`}${np?`${soloTicket?'':' · '}${np} pesadas apuntadas`:''}`);
+    }catch(err){ $('#fOk').disabled=false; $('#fOk').textContent='Guardar'; toast('Error: '+(err.message||err)); }
+  };
 }
 
 // ===== Exportar =====
