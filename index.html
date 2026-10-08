@@ -52,7 +52,7 @@ label{display:block;margin-bottom:10px;font-size:13px;color:var(--mut)}
 label>input,label>select,label>textarea{margin-top:3px}
 label.chk{display:flex;gap:8px;align-items:center}label.chk input{width:auto}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 10px}
-dialog{border:0;border-radius:12px;padding:0;width:min(560px,94vw);background:var(--card);color:var(--ink)}
+dialog{border:0;border-radius:12px;padding:0;width:min(560px,94vw);max-height:92vh;overflow:auto;background:var(--card);color:var(--ink)}
 dialog::backdrop{background:rgba(0,0,0,.45)}
 dialog form{padding:16px}
 dialog h3{margin:0 0 12px}
@@ -71,8 +71,8 @@ dialog h3{margin:0 0 12px}
 .clab{font-size:13px;color:var(--mut);display:block}
 .big{font-size:26px!important;font-weight:700;padding:10px!important}
 details.adv{margin:4px 0 10px}details.adv summary{cursor:pointer;color:var(--olv);font-size:14px;margin-bottom:8px}
-.quick{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px}
-.quick button{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:10px;padding:12px 4px;font:inherit;font-size:14px;font-weight:600;cursor:pointer}
+.quick{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:12px}
+.quick button{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:10px;padding:12px 2px;font:inherit;font-size:13px;font-weight:600;cursor:pointer}
 .quick button b{display:block;font-size:22px;color:var(--olv);line-height:1}
 .grp{font-size:13px;color:var(--mut);font-weight:600;margin:12px 0 4px}
 #toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:#222;color:#fff;padding:8px 14px;border-radius:8px;z-index:20;font-size:14px}
@@ -126,7 +126,7 @@ const UMB_DEF = {
 };
 
 // ===== Estado =====
-let D = {fincas:[],maquinas:[],gastos:[],ingresos:[],tratamientos:[],tareas:[],trabajadores:[],jornales:[],empresas:[],servicios:[]};
+let D = {fincas:[],maquinas:[],gastos:[],ingresos:[],tratamientos:[],tareas:[],trabajadores:[],jornales:[],empresas:[],servicios:[],facturas:[],factura_lineas:[]};
 const JOR_TAREAS = ['Recogida','Poda','Desvareto','Abonado','Curar','Desbrozar','Otra'];
 let ULT = {}; try{ ULT = JSON.parse(localStorage.getItem('olv_ult')||'{}'); }catch(e){}
 function recordar(k,v){ ULT[k]=v; try{ localStorage.setItem('olv_ult',JSON.stringify(ULT)); }catch(e){} }
@@ -209,8 +209,8 @@ window.addEventListener('online', vaciarCola); setInterval(vaciarCola, 60000);
 function sinRed(error){ if(esRed(error)){ toast('Sin cobertura: para editar o borrar necesitas conexión'); return true; } return false; }
 
 async function cargar(k){
-  const ord = {fincas:'nombre',maquinas:'nombre',gastos:'fecha',ingresos:'fecha',tratamientos:'fecha',tareas:'fecha',trabajadores:'nombre',jornales:'fecha',empresas:'nombre',servicios:'fecha'}[k];
-  const asc = !['gastos','ingresos','tratamientos','jornales','servicios'].includes(k);
+  const ord = {fincas:'nombre',maquinas:'nombre',gastos:'fecha',ingresos:'fecha',tratamientos:'fecha',tareas:'fecha',trabajadores:'nombre',jornales:'fecha',empresas:'nombre',servicios:'fecha',facturas:'fecha',factura_lineas:'created_at'}[k];
+  const asc = !['gastos','ingresos','tratamientos','jornales','servicios','facturas'].includes(k);
   let todo=[], desde=0;
   for(;;){ // Supabase devuelve como mucho 1000 filas por consulta
     const {data,error} = await sb.from('olv_'+k).select('*').order(ord,{ascending:asc}).order('id').range(desde,desde+999);
@@ -268,6 +268,7 @@ const S = {
     {k:'anos_amortizacion',l:'Años para amortizar',t:'int',adv:1,help:'0 = no amortizar. El coste anual se reparte como gasto común.'},
     {k:'activa',l:'En uso',t:'bool',def:true,adv:1},{k:'notas',l:'Notas',t:'area',adv:1}]},
   gastos:{tit:'Gasto', otro:1, f:()=>[
+    {k:'_scan',t:'html',nuevo:1,html:'<button type="button" class="btn sec" style="width:100%;margin-bottom:10px" onclick="escanear()">Escanear factura en vez de escribir</button>'},
     {k:'importe',l:'Importe (€)',t:'num',req:1,big:1,focus:1},
     {k:'categoria',l:'¿De qué?',t:'chips',ops:AJ.cats.map(x=>[x,x]),req:1,def:()=>ULT.g_cat||AJ.cats[0]},
     {k:'finca_id',l:'Finca',t:'chips',ops:opsFincas(),def:()=>ULT.g_finca??''},
@@ -322,7 +323,7 @@ function campoHtml(c, v, reg){
   const lab = esc(c.l) + (c.req?' *':'');
   const help = c.help?`<span class="mut" style="display:block">${esc(c.help)}</span>`:'';
   switch(c.t){
-    case 'html': return c.html;
+    case 'html': return (reg&&c.nuevo)?'':c.html;
     case 'bool': return `<label class="chk"><input type="checkbox" name="${c.k}" ${v?'checked':''}> ${lab}</label>`;
     case 'area': return `<label>${lab}<textarea name="${c.k}" rows="2">${esc(v)}</textarea></label>`;
     case 'sel': return `<label>${lab}<select name="${c.k}">${c.ops.map(([val,t])=>`<option value="${esc(val)}" ${String(v??'')===String(val)?'selected':''}>${esc(t)}</option>`).join('')}</select>${help}</label>`;
@@ -417,7 +418,7 @@ async function guardar(k, reg, otro=false){
   if(otro) abrir(k);
 }
 const USOS={
-  fincas:id=>['gastos','ingresos','jornales','servicios','tratamientos'].reduce((n,t)=>n+D[t].filter(r=>r.finca_id===id).length,0),
+  fincas:id=>['gastos','ingresos','jornales','servicios','tratamientos','facturas'].reduce((n,t)=>n+D[t].filter(r=>r.finca_id===id).length,0),
   trabajadores:id=>D.jornales.filter(j=>j.trabajador_id===id).length,
   empresas:id=>D.jornales.filter(j=>j.empresa_id===id).length+D.servicios.filter(x=>x.empresa_id===id).length+D.trabajadores.filter(t=>t.empresa_id===id).length,
 };
@@ -623,10 +624,161 @@ function vJornales(){
   <div class="card">${dias.length?dias.map(d=>{ const js=l.filter(j=>j.fecha===d), ss=sv.filter(x=>x.fecha===d); const [y,m,dd]=d.split('-').map(Number);
     return `<div class="grp">${DIAS[new Date(y,m-1,dd).getDay()]} ${fFecha(d)} · ${js.length} ${js.length===1?'persona':'personas'} · ${eur(js.reduce((a,j)=>a+Number(j.importe),0)+ss.reduce((a,x)=>a+Number(x.importe),0))}</div><table>${js.map(j=>`<tr class="click" data-ed="jornales:${j.id}"><td>${esc(trabNom(j.trabajador_id))}<div class="mut">${j.empresa_id?esc(empNom(j.empresa_id))+' · ':''}${esc(j.tarea||'')}${j.tarea?' · ':''}${esc(fincaNom(j.finca_id))}</div></td><td class="n">${num(j.horas,1)} h</td><td class="n">${eur(j.importe)}${j.pagado?'<div class="pos" style="font-size:12px">pagado</div>':''}</td></tr>`).join('')}${ss.map(x=>`<tr class="click" data-ed="servicios:${x.id}"><td>${esc(empNom(x.empresa_id))}<div class="mut">kilos recogidos · ${esc(fincaNom(x.finca_id))}</div></td><td class="n">${num(x.kilos)} kg</td><td class="n">${eur(x.importe)}${x.pagado?'<div class="pos" style="font-size:12px">pagado</div>':''}</td></tr>`).join('')}</table>`; }).join(''):'<p class="mut">Aún no hay jornadas en esta campaña.</p>'}</div>`;
 }
+// ===== Facturas =====
+function escanear(){
+  if(!navigator.onLine){ toast('Para leer una factura necesitas cobertura'); return; }
+  if($('#dlg').open) $('#dlg').close();
+  const i=document.createElement('input'); i.type='file'; i.accept='image/*,application/pdf';
+  i.onchange=()=>{ if(i.files[0]) leerFactura(i.files[0]); }; i.click();
+}
+async function prepararArchivo(file){
+  if(file.type==='application/pdf'){ if(file.size>9.5e6) throw new Error('El PDF pasa de 10 MB'); return {blob:file, mime:'application/pdf'}; }
+  const img=await createImageBitmap(file);
+  const k=Math.min(1, 2000/Math.max(img.width,img.height));
+  const cv=document.createElement('canvas'); cv.width=Math.round(img.width*k); cv.height=Math.round(img.height*k);
+  cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);
+  const blob=await new Promise(r=>cv.toBlob(r,'image/jpeg',0.82));
+  return {blob, mime:'image/jpeg'};
+}
+const aB64=blob=>new Promise((ok,ko)=>{ const r=new FileReader(); r.onload=()=>ok(String(r.result).split(',')[1]); r.onerror=ko; r.readAsDataURL(blob); });
+async function leerFactura(file){
+  $('#frm').oninput=null; $('#frm').onsubmit=e=>e.preventDefault();
+  $('#frm').innerHTML=`<h3>Leyendo factura…</h3><p class="mut">Tarda entre 10 y 30 segundos.</p><div class="bar"><i style="width:100%;animation:none"></i></div>`;
+  $('#dlg').showModal();
+  try{
+    const {blob,mime}=await prepararArchivo(file);
+    const data=await aB64(blob);
+    const {data:res,error}=await sb.functions.invoke('leer-factura',{body:{data,mime,categorias:AJ.cats}});
+    if(error){ let m=error.message; try{ const j=await error.context.json(); m=j.error||m; }catch(e){} throw new Error(m); }
+    if(!res?.datos) throw new Error(res?.error||'No se pudo leer');
+    revisarFactura(res.datos, blob, mime, res.proveedor_ia);
+  }catch(e){
+    $('#frm').innerHTML=`<h3>No se pudo leer la factura</h3><p class="neg">${esc(e.message)}</p><p class="mut">Puedes probar con otra foto (bien iluminada, sin cortar) o apuntarla a mano como gasto.</p><div class="row" style="justify-content:flex-end"><button type="button" class="btn sec" onclick="$('#dlg').close()">Cerrar</button><button type="button" class="btn" onclick="escanear()">Otra foto</button></div>`;
+  }
+}
+const n2=v=>{ const x=typeof v==='number'?v:pn(v); return (x==null||isNaN(x))?null:x; };
+function revisarFactura(d, blob, mime, ia){
+  const cats=AJ.cats;
+  const L=(d.lineas||[]).map(l=>({...l, categoria: cats.includes(l.categoria)?l.categoria:(cats.includes('Otros')?'Otros':cats[0])}));
+  const fincaDef=ULT.f_finca??'';
+  const fmt=v=>v==null?'':String(v).replace('.',',');
+  const lin=(l,i)=>`<div class="card" style="padding:8px 10px;margin-bottom:8px" data-l="${i}">
+     <div class="row" style="flex-wrap:nowrap"><input name="p_${i}" value="${esc(l.producto||'')}" style="flex:1"><button type="button" class="btn del sm" data-quitar="${i}">✕</button></div>
+     <div class="grid2" style="grid-template-columns:1fr 1fr 1fr;margin-top:6px">
+       <label>Cantidad${l.unidad?' ('+esc(l.unidad)+')':''}<input name="c_${i}" inputmode="decimal" value="${fmt(l.cantidad)}"></label>
+       <label>Precio/ud<input name="u_${i}" inputmode="decimal" value="${fmt(l.precio_unitario)}"></label>
+       <label>Importe<input name="i_${i}" inputmode="decimal" value="${fmt(l.importe)}"></label>
+     </div>
+     <select name="k_${i}">${cats.map(c=>`<option ${c===l.categoria?'selected':''}>${esc(c)}</option>`).join('')}</select></div>`;
+  const dup=D.facturas.find(f=>d.numero&&f.numero===d.numero&&(f.proveedor||'').toLowerCase()===(d.proveedor||'').toLowerCase());
+  $('#frm').innerHTML=`<h3>Revisar factura</h3>
+    <p class="mut">Leída por ${ia==='gemini'?'Gemini':'Claude'}. Repasa sobre todo el total.</p>
+    ${dup?`<p class="neg">Ya tienes una factura ${esc(d.numero)} de ${esc(d.proveedor)} del ${fFecha(dup.fecha)}.</p>`:''}
+    <label>Total con IVA (€) *<input name="total" class="big" inputmode="decimal" value="${fmt(d.total)}"></label>
+    <div class="grid2"><label>Proveedor<input name="proveedor" value="${esc(d.proveedor||'')}"></label><label>Fecha<input type="date" name="fecha" value="${/^\d{4}-\d{2}-\d{2}$/.test(d.fecha||'')?d.fecha:hoy()}"></label></div>
+    <span class="clab">Finca</span><div class="chips" data-chips="finca_id">${opsFincas().map(([v,t])=>`<button type="button" class="chip ${String(v)===String(fincaDef)?'on':''}" data-val="${esc(v)}">${esc(t)}</button>`).join('')}</div><input type="hidden" name="finca_id" value="${esc(fincaDef)}">
+    <span class="clab">Productos (${L.length})</span><div id="fLin">${L.map(lin).join('')}</div>
+    <div id="fSinLin" class="${L.length?'hidden':''}"><label>Categoría<select name="k_unica">${cats.map(c=>`<option>${esc(c)}</option>`).join('')}</select></label></div>
+    <details class="adv"><summary>Más detalles</summary><div class="grid2"><label>Nº factura<input name="numero" value="${esc(d.numero||'')}"></label><label>CIF<input name="cif" value="${esc(d.cif||'')}"></label><label>Base imponible<input name="base" inputmode="decimal" value="${fmt(d.base)}"></label><label>IVA<input name="iva" inputmode="decimal" value="${fmt(d.iva)}"></label></div></details>
+    <p id="fRes" class="mut"></p>
+    <div class="row" style="justify-content:flex-end"><button type="button" class="btn sec" id="fCancel">Cancelar</button><button class="btn" id="fOk">Guardar</button></div>`;
+  const F=$('#frm'); activarChips(F);
+  const vivas=()=>[...F.querySelectorAll('[data-l]')].map(el=>+el.dataset.l);
+  const reparto=()=>{
+    const tot=n2(F.total.value)||0; const ids=vivas();
+    if(!ids.length) return [{categoria:F.k_unica.value, importe:tot}];
+    const porCat={}; let suma=0;
+    ids.forEach(i=>{ const imp=n2(F[`i_${i}`].value)||0; suma+=imp; porCat[F[`k_${i}`].value]=(porCat[F[`k_${i}`].value]||0)+imp; });
+    const ent=Object.entries(porCat); if(!suma) return [{categoria:ent[0][0], importe:tot}];
+    const out=ent.map(([c,v])=>({categoria:c, importe:Math.round(tot*v/suma*100)/100}));
+    const dif=Math.round((tot-out.reduce((a,x)=>a+x.importe,0))*100)/100; out[0].importe=Math.round((out[0].importe+dif)*100)/100; // cuadrar céntimos
+    return out;
+  };
+  const resumen=()=>{ $('#fSinLin').classList.toggle('hidden',vivas().length>0); const r=reparto(); $('#fRes').innerHTML='Se apunta como gasto: '+r.map(x=>`<b>${esc(x.categoria)}</b> ${eur(x.importe)}`).join(' · ')+'<br><span class="mut">El IVA va incluido en el coste (en el régimen especial agrario no se recupera).</span>'; };
+  F.querySelectorAll('[data-quitar]').forEach(b=>b.onclick=()=>{ b.closest('[data-l]').remove(); resumen(); });
+  F.oninput=resumen; F.onchange=resumen; resumen();
+  $('#fCancel').onclick=()=>$('#dlg').close();
+  F.onsubmit=async e=>{
+    e.preventDefault();
+    const total=n2(F.total.value); if(!(total>0)){ toast('Pon el total de la factura'); return; }
+    $('#fOk').disabled=true; $('#fOk').textContent='Guardando…';
+    try{
+      const {data:{user}}=await sb.auth.getUser();
+      const id=nuevoId(); const path=`${user.id}/${id}.${mime==='application/pdf'?'pdf':'jpg'}`;
+      const up=await sb.storage.from('olv-facturas').upload(path, blob, {contentType:mime});
+      if(up.error) throw new Error('No se pudo subir la foto: '+up.error.message);
+      const fecha=F.fecha.value||hoy(), finca=F.finca_id.value||null, prov=F.proveedor.value.trim()||null, numero=F.numero.value.trim()||null;
+      let r=await sb.from('olv_facturas').insert({id, fecha, proveedor:prov, cif:F.cif.value.trim()||null, numero, base:n2(F.base.value), iva:n2(F.iva.value), total, finca_id:finca, foto_path:path, leida_por:ia});
+      if(r.error){ await sb.storage.from('olv-facturas').remove([path]); throw r.error; }
+      const lineas=vivas().map(i=>{ const orig=L[i]||{}; return {factura_id:id, producto:F[`p_${i}`].value.trim()||'(sin nombre)', nombre_comun:orig.nombre_comun||null, cantidad:n2(F[`c_${i}`].value), unidad:orig.unidad||null, precio_unitario:n2(F[`u_${i}`].value), descuento_pct:orig.descuento_pct??null, iva_pct:orig.iva_pct??null, importe:n2(F[`i_${i}`].value), categoria:F[`k_${i}`].value}; });
+      if(lineas.length) r=await sb.from('olv_factura_lineas').insert(lineas);
+      if(!r.error) r=await sb.from('olv_gastos').insert(reparto().map(x=>({fecha, categoria:x.categoria, importe:x.importe, concepto:`Factura ${prov||''}${numero?' nº '+numero:''}`.trim(), proveedor:prov, finca_id:finca, factura_id:id})));
+      if(r.error){ await sb.from('olv_facturas').delete().eq('id',id); await sb.storage.from('olv-facturas').remove([path]); throw r.error; }
+      recordar('f_finca',F.finca_id.value);
+      $('#dlg').close(); await Promise.all(['facturas','factura_lineas','gastos'].map(cargar)); pintarCampanas(); render();
+      toast(`Factura de ${eur(total)} guardada`);
+    }catch(err){ $('#fOk').disabled=false; $('#fOk').textContent='Guardar'; toast(esRed(err)?'Sin cobertura: inténtalo cuando tengas señal':'Error: '+err.message); }
+  };
+}
+async function verFactura(id){
+  const f=D.facturas.find(x=>x.id===id); if(!f) return;
+  const ls=D.factura_lineas.filter(l=>l.factura_id===id), gs=D.gastos.filter(g=>g.factura_id===id);
+  $('#frm').oninput=null; $('#frm').onchange=null; $('#frm').onsubmit=e=>e.preventDefault();
+  $('#frm').innerHTML=`<h3>${esc(f.proveedor||'Factura')}</h3><p class="mut">${fFecha(f.fecha)}${f.numero?' · nº '+esc(f.numero):''} · <b>${eur(f.total)}</b> · ${esc(fincaNom(f.finca_id))}</p>
+    <div id="fFoto" class="mut">Cargando foto…</div>
+    ${ls.length?`<table style="margin-top:8px">${ls.map(l=>`<tr><td>${esc(l.producto)}<div class="mut">${esc(l.categoria||'')}</div></td><td class="n">${l.cantidad!=null?num(l.cantidad,2)+' '+esc(l.unidad||''):''}<div class="mut">${l.precio_unitario!=null?eur(l.precio_unitario)+'/ud':''}</div></td><td class="n">${eur(l.importe)}</td></tr>`).join('')}</table>`:''}
+    <p class="mut">Gastos apuntados: ${gs.map(g=>`${esc(g.categoria)} ${eur(g.importe)}`).join(' · ')||'ninguno'}</p>
+    <div class="row" style="justify-content:space-between"><button type="button" class="btn del" id="fBorrar">Borrar factura</button><button type="button" class="btn" onclick="$('#dlg').close()">Cerrar</button></div>`;
+  $('#dlg').showModal();
+  $('#fBorrar').onclick=async()=>{
+    if(!confirm('¿Borrar la factura, su foto y los gastos que se apuntaron con ella?')) return;
+    const {error}=await sb.from('olv_facturas').delete().eq('id',id);
+    if(error){ if(!sinRed(error)) toast('Error: '+error.message); return; }
+    if(f.foto_path) await sb.storage.from('olv-facturas').remove([f.foto_path]);
+    $('#dlg').close(); await Promise.all(['facturas','factura_lineas','gastos'].map(cargar)); render(); toast('Factura borrada');
+  };
+  if(!f.foto_path){ $('#fFoto').textContent=''; return; }
+  const {data,error}=await sb.storage.from('olv-facturas').createSignedUrl(f.foto_path,3600);
+  const el=$('#fFoto'); if(!el) return;
+  if(error||!data?.signedUrl){ el.textContent='No se pudo cargar la foto.'; return; }
+  el.innerHTML = f.foto_path.endsWith('.pdf') ? `<a class="btn sec sm" href="${esc(data.signedUrl)}" target="_blank" rel="noopener">Abrir PDF</a>` : `<a href="${esc(data.signedUrl)}" target="_blank" rel="noopener"><img src="${esc(data.signedUrl)}" alt="Foto de la factura" style="width:100%;border-radius:8px;border:1px solid var(--line)"></a>`;
+}
+function vFacturas(){
+  fab(escanear);
+  const [ini,fin]=campRango(CAMP);
+  const l=D.facturas.filter(f=>f.fecha>=ini&&f.fecha<=fin);
+  return `<button class="btn" style="width:100%;padding:14px;font-size:16px;margin-bottom:12px" onclick="escanear()">Escanear factura</button>
+  <div class="card"><h2>Facturas ${esc(CAMP)}</h2><p class="mut">${l.length} facturas · <b>${eur(l.reduce((a,f)=>a+Number(f.total),0))}</b></p>
+  ${l.length?`<table>${l.map(f=>`<tr class="click" onclick="verFactura('${f.id}')"><td>${esc(f.proveedor||'—')}<div class="mut">${fFecha(f.fecha)}${f.numero?' · nº '+esc(f.numero):''} · ${D.factura_lineas.filter(x=>x.factura_id===f.id).length} productos</div></td><td class="n">${eur(f.total)}</td></tr>`).join('')}</table>`:'<p class="mut">Haz una foto a una factura o ticket y se apunta sola.</p>'}</div>`;
+}
+function precioUd(l){ return l.precio_unitario!=null ? Number(l.precio_unitario) : (l.cantidad ? Number(l.importe)/Number(l.cantidad) : null); }
+function vPrecios(){
+  fab(escanear);
+  const fact=Object.fromEntries(D.facturas.map(f=>[f.id,f]));
+  const G={};
+  D.factura_lineas.forEach(l=>{ const f=fact[l.factura_id]; if(!f) return; const k=(l.nombre_comun||l.producto||'').toLowerCase().trim(); if(!k) return;
+    (G[k]=G[k]||{nombre:l.nombre_comun||l.producto, compras:[]}).compras.push({fecha:f.fecha, proveedor:f.proveedor, precio:precioUd(l), unidad:l.unidad, cantidad:l.cantidad, factura:f.id}); });
+  const q=(SUB.precioQ||'').toLowerCase();
+  const lista=Object.entries(G).filter(([k,g])=>!q||k.includes(q)||g.compras.some(c=>(c.proveedor||'').toLowerCase().includes(q)))
+    .map(([k,g])=>{ g.compras.sort((a,b)=>b.fecha.localeCompare(a.fecha)); const con=g.compras.filter(c=>c.precio!=null); const min=con.reduce((m,c)=>!m||c.precio<m.precio?c:m,null); return {k,g,ult:g.compras[0],min}; })
+    .sort((a,b)=>b.ult.fecha.localeCompare(a.ult.fecha));
+  const sel=SUB.precioSel;
+  return `<div class="card"><h2>Precios de productos</h2>
+    <input id="pBusca" placeholder="Buscar producto o proveedor" value="${esc(SUB.precioQ||'')}" style="margin-bottom:8px">
+    ${lista.length?`<table><tr><th>Producto</th><th class="n">Último</th><th class="n">Más barato</th></tr>${lista.map(({k,g,ult,min})=>`<tr class="click" data-psel="${esc(k)}"><td>${esc(g.nombre)}<div class="mut">${g.compras.length} ${g.compras.length===1?'compra':'compras'}</div></td><td class="n">${ult.precio!=null?eur(ult.precio):'—'}${ult.unidad?'/'+esc(ult.unidad):''}<div class="mut">${esc(ult.proveedor||'')} · ${fFecha(ult.fecha)}</div></td><td class="n">${min?eur(min.precio):'—'}<div class="mut">${min?esc(min.proveedor||''):''}</div></td></tr>
+      ${sel===k?`<tr><td colspan="3" style="background:rgba(127,127,100,.07)"><table>${g.compras.map(c=>`<tr class="click" onclick="verFactura('${c.factura}')"><td>${fFecha(c.fecha)}<div class="mut">${esc(c.proveedor||'')}</div></td><td class="n">${c.cantidad!=null?num(c.cantidad,2)+' '+esc(c.unidad||''):''}</td><td class="n ${min&&c.precio===min.precio?'pos':''}">${c.precio!=null?eur(c.precio):'—'}</td></tr>`).join('')}</table></td></tr>`:''}`).join('')}</table>`
+    :`<p class="mut">${D.factura_lineas.length?'Nada coincide con la búsqueda.':'Cuando escanees facturas, aquí verás lo que pagas por cada producto y dónde sale más barato.'}</p>`}</div>`;
+}
+function postPrecios(){
+  const b=$('#pBusca'); if(!b) return;
+  b.oninput=()=>{ SUB.precioQ=b.value; const pos=b.selectionStart; render(); const nb=$('#pBusca'); nb.focus(); nb.setSelectionRange(pos,pos); };
+  document.querySelectorAll('[data-psel]').forEach(tr=>tr.onclick=()=>{ SUB.precioSel = SUB.precioSel===tr.dataset.psel ? null : tr.dataset.psel; render(); });
+}
+
 function vCuentas(){
   const s=SUB.cuentas||'gastos';
-  const tabs=`<div class="tabs2"><button data-sub="cuentas:gastos" class="${s==='gastos'?'on':''}">Gastos</button><button data-sub="cuentas:ingresos" class="${s==='ingresos'?'on':''}">Cobros</button></div>`;
-  return tabs+(s==='gastos'?vGastos():vIngresos());
+  const tabs=`<div class="tabs2">${[['gastos','Gastos'],['ingresos','Cobros'],['facturas','Facturas'],['precios','Precios']].map(([k,t])=>`<button data-sub="cuentas:${k}" class="${s===k?'on':''}">${t}</button>`).join('')}</div>`;
+  return tabs+({gastos:vGastos,ingresos:vIngresos,facturas:vFacturas,precios:vPrecios}[s])();
 }
 
 // ===== Vistas =====
@@ -637,7 +789,7 @@ function fab(k){ const f=$('#fab'); if(!k){f.classList.add('hidden');return;} f.
 function render(){
   const V={inicio:vInicio,cuentas:vCuentas,jornales:vJornales,campo:vCampo,tiempo:vTiempo,mas:vMas}[VIEW];
   $('#view').innerHTML = V();
-  const post={tiempo:postTiempo,mas:postMas}[VIEW]; if(post) post();
+  const post={tiempo:postTiempo,mas:postMas,cuentas:postPrecios}[VIEW]; if(post) post();
   document.querySelectorAll('[data-ed]').forEach(el=>el.onclick=e=>{ if(e.target.closest('[data-hecha]')) return; const [k,id]=el.dataset.ed.split(':'); abrir(k, D[k].find(x=>x.id===id)); });
   document.querySelectorAll('[data-hecha]').forEach(el=>el.onclick=e=>{ e.stopPropagation(); marcarHecha(el.dataset.hecha); });
   document.querySelectorAll('[data-sub]').forEach(el=>el.onclick=()=>{ const [v,s]=el.dataset.sub.split(':'); SUB[v]=s; render(); });
@@ -653,7 +805,7 @@ function vInicio(){
   const filas=C.fincas.map(f=>{ const r=C.R[f.id]; const g=r.directo+r.comun, i=r.ingD+r.ingC, mg=i-g;
     return `<tr><td>${esc(f.nombre)}<div class="mut">${f.activa?`${num(f.olivos)} olivos · ${num(C.totOl?f.olivos/C.totOl*100:0,1)} %`:'inactiva'}</div></td><td class="n">${eur(g)}<div class="mut">${eur(r.directo)} propios<br>${eur(r.comun)} común</div></td><td class="n">${eur(i)}</td><td class="n ${mg>=0?'pos':'neg'}"><b>${eur(mg)}</b><div class="mut">${f.olivos?eur(g/f.olivos)+'/olivo':''}</div></td></tr>`; }).join('');
   return `
-  <div class="quick"><button onclick="abrir('gastos')"><b>+</b>Gasto</button><button onclick="abrirParte()"><b>+</b>Jornada</button><button onclick="abrir('ingresos')"><b>+</b>Cobro</button><button onclick="abrir('tareas')"><b>+</b>Tarea</button></div>
+  <div class="quick"><button onclick="abrir('gastos')"><b>+</b>Gasto</button><button onclick="abrirParte()"><b>+</b>Jornada</button><button onclick="abrir('ingresos')"><b>+</b>Cobro</button><button onclick="abrir('tareas')"><b>+</b>Tarea</button><button onclick="escanear()"><b>+</b>Factura</button></div>
   <div class="card"><h2>Avisos</h2>${avHtml}</div>
   <div class="kpis">
     <div class="kpi"><span>Ingresos ${esc(CAMP)}</span><b>${eur(C.totI)}</b></div>
@@ -681,7 +833,7 @@ function vGastos(){
   return `<div class="card"><h2>Gastos ${esc(CAMP)}<span class="sp"></span><button class="btn sec sm" onclick="csv('gastos')">CSV</button></h2>
   <div class="row" style="margin-bottom:8px">${filtroFinca('gastos')}<select onchange="SUB.gastosC=this.value;render()" style="width:auto"><option value="*">Todas las categorías</option>${catsU.map(c=>`<option ${c===fC?'selected':''}>${esc(c)}</option>`).join('')}</select></div>
   <p class="mut">${l.length} gastos · <b>${eur(tot)}</b></p>
-  ${l.length?`<div class="scroll"><table><tr><th>Fecha</th><th>Concepto</th><th>Finca</th><th class="n">Importe</th></tr>${l.map(g=>`<tr class="click" data-ed="gastos:${g.id}"><td>${fFecha(g.fecha)}</td><td>${esc(g.concepto||g.categoria)}<div class="mut">${esc(g.categoria)}${g.maquina_id?' · '+esc(maqNom(g.maquina_id)):''}${g.proveedor?' · '+esc(g.proveedor):''}</div></td><td>${g.finca_id?esc(fincaNom(g.finca_id)):'<span class="tag">Común</span>'}</td><td class="n">${eur(g.importe)}</td></tr>`).join('')}</table></div>`:'<p class="mut">No hay gastos. Pulsa + para añadir.</p>'}</div>`;
+  ${l.length?`<div class="scroll"><table><tr><th>Fecha</th><th>Concepto</th><th>Finca</th><th class="n">Importe</th></tr>${l.map(g=>`<tr class="click" ${g.factura_id?`onclick="verFactura('${g.factura_id}')"`:`data-ed="gastos:${g.id}"`}><td>${fFecha(g.fecha)}</td><td>${esc(g.concepto||g.categoria)}${g.factura_id?' <span class="tag">factura</span>':''}<div class="mut">${esc(g.categoria)}${g.maquina_id?' · '+esc(maqNom(g.maquina_id)):''}${g.proveedor?' · '+esc(g.proveedor):''}</div></td><td>${g.finca_id?esc(fincaNom(g.finca_id)):'<span class="tag">Común</span>'}</td><td class="n">${eur(g.importe)}</td></tr>`).join('')}</table></div>`:'<p class="mut">No hay gastos. Pulsa + para añadir.</p>'}</div>`;
 }
 function vIngresos(){
   fab('ingresos'); const fF=SUB.ingresosF||'*';
