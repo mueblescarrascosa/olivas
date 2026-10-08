@@ -158,7 +158,7 @@ details.adv{margin:4px 0 10px}details.adv summary{cursor:pointer;color:var(--olv
 
 <script>
 // ===== Configuración =====
-const VERSION = '1.7';
+const VERSION = '1.9';
 const VERSION_FECHA = '8 oct 2026';
 const CREDITOS = `Olivas v${VERSION} (${VERSION_FECHA}) · © 2026 Alfonso Carrascosa Martínez · Hecha con Claude (Anthropic)`;
 const SUPA_URL = 'https://kseyndjbmkaflpoqitsj.supabase.co';
@@ -166,6 +166,8 @@ const SUPA_KEY = 'sb_publishable_CbwajQX7DgAoK3fV6GVU5g_18CWeqMG';
 const sb = supabase.createClient(SUPA_URL, SUPA_KEY);
 
 const CATS_DEF = ['Gasoil / gasolina','Cuadrillas / destajo','Seguros sociales','Averías y reparaciones','Mantenimiento maquinaria','Fitosanitarios','Abonos','EPIs','Herramientas','Seguros','IBI / impuestos','Cuotas cooperativa','Transporte','Otros'];
+const TIPOS_REU=['Riego','Cooperativa','Proyecto oleícola','Charla / curso','Banco / gestor','Otra'];
+const TIPOS_ALM=['Fitosanitario','Herbicida','Abono','Foliar / aminoácidos','Otro'];
 const CAT_RENTA='Arrendamiento (renta)';
 const ING_TIPOS = ['Liquidación','Anticipo','Liquidación complementaria','Ayuda PAC','Compensación IVA (REAGP)','Otros'];
 const TAREA_TIPOS = ['Poda','Pestugar','Juntar ramas','Desbrozar','Soplar','Curar / tratamiento','Abonado','Herbicida / suelo','Recogida','Riego','Revisar','Mantenimiento','Papeles / trámites','Otra'];
@@ -184,7 +186,7 @@ const UMB_DEF = {
 };
 
 // ===== Estado =====
-let D = {fincas:[],maquinas:[],gastos:[],ingresos:[],tratamientos:[],tareas:[],trabajadores:[],jornales:[],empresas:[],servicios:[],facturas:[],factura_lineas:[],dias_perdidos:[],comunidades:[],riego_pagos:[],labores:[],consejos:[],aplicaciones:[],pesadas:[],notas:[],recintos:[]};
+let D = {fincas:[],maquinas:[],gastos:[],ingresos:[],tratamientos:[],tareas:[],trabajadores:[],jornales:[],empresas:[],servicios:[],facturas:[],factura_lineas:[],dias_perdidos:[],comunidades:[],riego_pagos:[],labores:[],consejos:[],aplicaciones:[],pesadas:[],notas:[],recintos:[],reuniones:[],almacen:[]};
 const JOR_TAREAS = ['Recogida','Poda','Pestugar','Juntar ramas','Desbrozar','Soplar','Curar','Abonar','Día perdido','Otra'];
 let ULT = {}; try{ ULT = JSON.parse(localStorage.getItem('olv_ult')||'{}'); }catch(e){}
 function recordar(k,v){ ULT[k]=v; try{ localStorage.setItem('olv_ult',JSON.stringify(ULT)); }catch(e){} }
@@ -271,7 +273,7 @@ window.addEventListener('online', vaciarCola); setInterval(vaciarCola, 60000);
 function sinRed(error){ if(esRed(error)){ toast('Sin cobertura: para editar o borrar necesitas conexión'); return true; } return false; }
 
 async function cargar(k){
-  const ord = {fincas:'nombre',maquinas:'nombre',gastos:'fecha',ingresos:'fecha',tratamientos:'fecha',tareas:'fecha',trabajadores:'nombre',jornales:'fecha',empresas:'nombre',servicios:'fecha',facturas:'fecha',factura_lineas:'created_at',dias_perdidos:'fecha',comunidades:'nombre',riego_pagos:'fecha',labores:'fecha',consejos:'created_at',aplicaciones:'fecha',pesadas:'fecha',notas:'fecha',recintos:'parcela'}[k];
+  const ord = {fincas:'nombre',maquinas:'nombre',gastos:'fecha',ingresos:'fecha',tratamientos:'fecha',tareas:'fecha',trabajadores:'nombre',jornales:'fecha',empresas:'nombre',servicios:'fecha',facturas:'fecha',factura_lineas:'created_at',dias_perdidos:'fecha',comunidades:'nombre',riego_pagos:'fecha',labores:'fecha',consejos:'created_at',aplicaciones:'fecha',pesadas:'fecha',notas:'fecha',recintos:'parcela',reuniones:'fecha',almacen:'nombre'}[k];
   const asc = !['gastos','ingresos','tratamientos','jornales','servicios','facturas','dias_perdidos','riego_pagos','labores','consejos','aplicaciones','pesadas','notas'].includes(k);
   let todo=[], desde=0;
   for(;;){ // Supabase devuelve como mucho 1000 filas por consulta
@@ -293,12 +295,12 @@ async function cargarTodo(){
     if(D.fincas.some(f=>f.arrendada) && !AJ.cats.includes(CAT_RENTA)) AJ.cats.splice(Math.max(0,AJ.cats.length-1),0,CAT_RENTA);
     try{ const sinPend={}; Object.keys(D).forEach(k=>sinPend[k]=D[k].filter(r=>!COLA.some(i=>i.filas.some(f=>f.id===r.id)))); localStorage.setItem('olv_cache',JSON.stringify({D:sinPend,AJ,t:Date.now()})); }catch(e){}
   }
-  pintarCampanas(); pintarCola();
+  pintarCampanas(); pintarCola(); setTimeout(plazosAlDia,3000);
 }
-async function guardarAjustes(){
+async function guardarAjustes(silencio){
   const {data:{user}} = await sb.auth.getUser();
   const {error} = await sb.from('olv_ajustes').upsert({user_id:user.id, datos:AJ, updated_at:new Date().toISOString()});
-  toast(error ? 'Error: '+error.message : 'Ajustes guardados');
+  if(error) toast('Error: '+error.message); else if(!silencio) toast('Ajustes guardados');
 }
 function pintarCampanas(){
   const set = new Set([campDe(hoy())]);
@@ -349,6 +351,7 @@ const S = {
     {k:'importe',l:'Importe (€)',t:'num',req:1,big:1,focus:1},
     {k:'categoria',l:'¿De qué?',t:'chips',ops:[...AJ.cats,...(D.fincas.some(f=>f.arrendada)&&!AJ.cats.includes(CAT_RENTA)?[CAT_RENTA]:[])].map(x=>[x,x]),req:1,def:()=>ULT.g_cat||AJ.cats[0]},
     {k:'finca_id',l:'Finca',t:'chips',ops:opsFincas(),def:()=>ULT.g_finca??''},
+    {k:'litros',l:'Litros (para la devolución del gasóleo)',t:'num',grp:'gas'},
     {k:'fecha',l:'Fecha',t:'date',def:hoy,req:1,adv:1},{k:'concepto',l:'Concepto',adv:1},
     {k:'maquina_id',l:'Vehículo / máquina',t:'sel',ops:opsMaq(),adv:1},{k:'proveedor',l:'Proveedor',adv:1},{k:'notas',l:'Notas',t:'area',adv:1}]},
   ingresos:{tit:'Cobro', f:()=>[
@@ -373,6 +376,22 @@ const S = {
     {k:'tipo',l:'Tipo',t:'sel',ops:[['',''],...TAREA_TIPOS.map(x=>[x,x])],adv:1},
     {k:'repetir_dias',l:'Repetir cada (días)',t:'int',adv:1,help:'Al marcarla hecha se crea la siguiente'},
     {k:'hecha',l:'Hecha',t:'bool',adv:1},{k:'notas',l:'Notas',t:'area',adv:1}]},
+  reuniones:{tit:'Reunión o cita', otro:1, f:()=>[
+    {k:'titulo',l:'Qué es',req:1,focus:1,help:'P. ej. Junta de la comunidad de regantes, charla de poda…'},
+    {k:'tipo',l:'Tipo',t:'chips',ops:TIPOS_REU.map(x=>[x,x]),def:()=>ULT.r_tipo||'Cooperativa'},
+    {k:'fecha',l:'Día',t:'date',req:1,def:hoy,q:[['Mañana',1],['En una semana',7]]},
+    {k:'hora',l:'Hora',t:'time'},
+    {k:'lugar',l:'Lugar',help:'Sitio o dirección; sale con enlace al mapa'},
+    {k:'notas',l:'Notas (qué llevar, qué se habló…)',t:'area'},
+    {k:'finca_id',l:'Finca (si va de una)',t:'chips',ops:opsFincas(),adv:1},
+    {k:'hecha',l:'Ya pasó / hecha',t:'bool',adv:1}]},
+  almacen:{tit:'Producto del almacén', f:()=>[
+    {k:'nombre',l:'Producto',req:1,focus:1},
+    {k:'tipo',l:'Tipo',t:'chips',ops:TIPOS_ALM.map(x=>[x,x]),def:'Fitosanitario'},
+    {k:'cantidad',l:'Cantidad que tienes',t:'num'},
+    {k:'unidad',l:'Unidad',t:'chips',ops:[['kg','kg'],['l','litros'],['ud','unidades']],def:'l'},
+    {k:'caduca',l:'Caduca el',t:'date'},
+    {k:'num_registro',l:'Nº de registro',adv:1},{k:'notas',l:'Notas',t:'area',adv:1},{k:'activo',l:'Lo sigo teniendo',t:'bool',def:true,adv:1}]},
   trabajadores:{tit:'Trabajador', f:()=>[
     {k:'nombre',l:'Nombre',req:1,focus:1},{k:'empresa_id',l:'¿De quién es?',t:'chips',ops:[['','Mío'],...D.empresas.filter(e=>e.activa).map(e=>[e.id,e.nombre])],help:'Si es de una empresa, se cobra con el precio de la empresa'},
     {k:'precio_dia',l:'Precio del jornal (€) — solo si es tuyo',t:'num'},
@@ -462,6 +481,7 @@ function campoHtml(c, v, reg){
       return `<label>${lab}<select name="${c.k}">${c.ops.map(([val,t])=>`<option value="${esc(val)}" ${String(v??'')===String(val)?'selected':''}>${esc(t)}</option>`).join('')}</select>${help}</label>`;
     case 'chips': return `<span class="clab">${lab}</span><div class="chips" data-chips="${c.k}">${c.ops.map(([val,t])=>`<button type="button" class="chip ${String(v??'')===String(val)?'on':''}" data-val="${esc(val)}">${esc(t)}</button>`).join('')}</div><input type="hidden" name="${c.k}" value="${esc(v??'')}">`;
     case 'date': return `<label>${lab}<input type="date" name="${c.k}" value="${esc(v)}" ${c.req?'required':''}>${help}</label>${c.q?`<div class="chips" style="margin-top:-6px">${c.q.map(([t,n])=>`<button type="button" class="chip" data-qf="${c.k}" data-n="${n}">${t}</button>`).join('')}</div>`:''}`;
+    case 'time': return `<label>${lab}<input type="time" name="${c.k}" value="${esc(v)}">${help}</label>`;
     case 'num': case 'int': case 'coord': return `<label>${lab}<input name="${c.k}" inputmode="decimal" autocomplete="off" class="${c.big?'big':''}" value="${esc(v)}" ${c.req?'required':''}>${help}</label>`;
     default: return `<label>${lab}<input name="${c.k}" autocomplete="off" value="${esc(v)}" ${c.req?'required':''}>${help}</label>`;
   }
@@ -499,6 +519,13 @@ function abrir(k, reg=null, ini=null){
       document.querySelectorAll('#frm [data-grp]').forEach(el=>el.classList.toggle('hidden',!vis[el.dataset.grp])); };
     $('#frm [name=tipo]').addEventListener('change',tog); tog();
   }
+  if(k==='gastos'){ const ci=$('#frm [name=categoria]'), tG=()=>document.querySelectorAll('#frm [data-grp=gas]').forEach(el=>el.classList.toggle('hidden',!/gas[oó]|gasoil/i.test(ci.value))); ci.addEventListener('change',tG); tG();
+    const lit=$('#frm [name=litros]'), imp=$('#frm [name=importe]');
+    if(lit){ lit.closest('label').insertAdjacentHTML('afterend','<div class="chips hidden" id="gLit" style="margin-top:-6px"></div>'); const box=$('#gLit'); lit.closest('[data-grp]')?.appendChild(box);
+      const sug=async()=>{ const g=await gasolineraFav(); const e=pn(imp.value); if(!g||!g.gasoleo_b||!e||pn(lit.value)){ box.classList.add('hidden'); return; } const l=Math.round(e/g.gasoleo_b);
+        box.innerHTML=`<button type="button" class="chip">≈ ${num(l)} l a ${num(g.gasoleo_b,3)} €/l (${esc(g.rotulo)})</button>`; box.classList.remove('hidden'); box.firstChild.onclick=()=>{ lit.value=l; box.classList.add('hidden'); }; };
+      imp.addEventListener('input',sug); lit.addEventListener('input',sug); ci.addEventListener('change',sug); sug(); } }
+  if(k==='reuniones'){ const ti=$('#frm [name=tipo]'); ti.addEventListener('change',()=>{ ULT.r_tipo=ti.value; }); }
   if(k==='trabajadores'){
     const cb=$('#frm [name=carne]'), tog=()=>document.querySelectorAll('#frm [data-grp=carne]').forEach(el=>el.classList.toggle('hidden',!cb.checked));
     cb.addEventListener('change',tog); tog(); campoExpedicion('#frm [name=carne_caduca]');
@@ -705,6 +732,7 @@ function avisos(){
     else if(d<=u.itv_dias) out.push({c:d<=7?'bad':'',t:`Riego: <b>${esc(r.concepto)} ${esc(comNom(r.comunidad_id))}</b> ${eur(r.importe)} vence el ${fFecha(r.vencimiento)}`,ord:d,riego:1}); });
   { const [ini,fin]=campRango(CAMP); const liq=D.ingresos.some(i=>i.fecha>=ini&&i.fecha<=fin&&/Liquidaci/.test(i.tipo||'')); const pr=rentas().reduce((a,r)=>a+r.pend,0);
     if(liq&&pr>0) out.push({c:'',t:`Ya has cobrado liquidación: queda la renta de las fincas arrendadas, <b>${eur(pr)}</b>`,ord:49,go:'jornales'}); }
+  out.push(...avisosExtra(h));
   const deb=Object.values(pendientes()).reduce((a,b)=>a+b,0);
   if(deb>0) out.push({c:'',t:`Debes <b>${eur(deb)}</b> a trabajadores${D.empresas.length?' y empresas':''}`,ord:50,go:'jornales'});
   return out.sort((a,b)=>a.ord-b.ord);
@@ -824,7 +852,7 @@ function vJornales(){
     const G=grupos(D.trabajadores.slice().sort((a,b)=>Number(b.activo)-Number(a.activo)),true);
     const T=AJ.titular||{}, cs=carnes().filter(c=>!c.tit);
     const fila=(nom,cad,attr,extra)=>`<tr class="click" ${attr}><td>${esc(nom)}${extra?`<div class="mut">${esc(extra)}</div>`:''}</td><td class="n">${estadoCarne(cad)}</td></tr>`;
-    const cardC=`<div class="card"><h2>Carnés de fitosanitarios</h2><table>${fila(T.nombre?T.nombre+' (tú)':'Tú',T.carne_caduca,'onclick="abrirDatosCuaderno()"',[T.tipo_carne,T.ropo].filter(Boolean).join(' · ')||'Pulsa para poner tu carné')}${cs.map(c=>{ const t=D.trabajadores.find(x=>x.id===c.id); return fila(c.nombre,c.cad,`data-ed="trabajadores:${c.id}"`,[t.tipo_carne,t.ropo].filter(Boolean).join(' · ')); }).join('')}</table><p class="mut">Te aviso en Inicio 3 meses antes de que caduque. Para marcar a alguien, ábrelo abajo y pulsa «Tiene carné».</p></div>`;
+    const cardC=`<div class="card"><h2>Carnés de fitosanitarios</h2><table>${fila(T.nombre?T.nombre+' (tú)':'Tú',T.carne_caduca,'onclick="abrirDatosCuaderno()"',[T.tipo_carne,T.ropo].filter(Boolean).join(' · ')||'Pulsa para poner tu carné')}${cs.map(c=>{ const t=D.trabajadores.find(x=>x.id===c.id); return fila(c.nombre,c.cad,`data-ed="trabajadores:${c.id}"`,[t.tipo_carne,t.ropo].filter(Boolean).join(' · ')); }).join('')}</table><p class="mut"><button class="btn sec sm" onclick="abrirJornadasSS()">Jornadas por mes (Seguridad Social)</button></p><p class="mut">Te aviso en Inicio 3 meses antes de que caduque. Para marcar a alguien, ábrelo abajo y pulsa «Tiene carné».</p></div>`;
     return tabs+cardC+`<div class="card"><h2>Empresas de servicios<span class="sp"></span><button class="btn sec sm" onclick="abrir('empresas')">+ Empresa</button></h2>${D.empresas.length?`<table>${D.empresas.map(e=>`<tr class="click" data-ed="empresas:${e.id}"><td>${esc(e.nombre)}${e.activa?'':' <span class="tag">baja</span>'}<div class="mut">${FORMAS[e.forma_cobro]}${e.cif?' · '+esc(e.cif):''}</div></td><td class="n">${eur(e.precio)}${e.forma_cobro==='kilo'?'/kg':e.forma_cobro==='hora'?'/h':'/jornal'}<div class="mut">+ ${num(e.iva_pct)} % IVA</div></td></tr>`).join('')}</table>`:'<p class="mut">Si te mandan cuadrillas de una empresa, dala de alta aquí con su precio.</p>'}</div>
     <div class="card"><h2>Trabajadores</h2>${D.trabajadores.length?G.map(g=>`<div class="grp">${esc(g.nombre)}</div><table>${g.trab.map(t=>`<tr class="click" data-ed="trabajadores:${t.id}"><td>${esc(t.nombre)}${t.activo?'':' <span class="tag">baja</span>'}${t.carne?' <span class="tag">carné</span>':''}${t.telefono?`<div class="mut">${esc(t.telefono)}</div>`:''}</td><td class="n">${g.e?'<span class="mut">precio de la empresa</span>':t.precio_hora?eur(t.precio_hora)+'/h':eur(t.precio_dia)}</td></tr>`).join('')}</table>`).join(''):'<p class="mut">Pulsa + para añadir a quien trabaja contigo.</p>'}</div>`;
   }
@@ -986,13 +1014,14 @@ function vPrecios(){
     .map(([k,g])=>{ g.compras.sort((a,b)=>b.fecha.localeCompare(a.fecha)); const con=g.compras.filter(c=>c.precio!=null); const min=con.reduce((m,c)=>!m||c.precio<m.precio?c:m,null); return {k,g,ult:g.compras[0],min}; })
     .sort((a,b)=>b.ult.fecha.localeCompare(a.ult.fecha));
   const sel=SUB.precioSel;
-  return `<div class="card"><h2>Precios de productos</h2>
+  return `<div id="carbBox"></div><div class="card"><h2>Precios de productos</h2>
     <input id="pBusca" placeholder="Buscar producto o proveedor" value="${esc(SUB.precioQ||'')}" style="margin-bottom:8px">
     ${lista.length?`<table><tr><th>Producto</th><th class="n">Último</th><th class="n">Más barato</th></tr>${lista.map(({k,g,ult,min})=>`<tr class="click" data-psel="${esc(k)}"><td>${esc(g.nombre)}<div class="mut">${g.compras.length} ${g.compras.length===1?'compra':'compras'}</div></td><td class="n">${ult.precio!=null?eur(ult.precio):'—'}${ult.unidad?'/'+esc(ult.unidad):''}<div class="mut">${esc(ult.proveedor||'')} · ${fFecha(ult.fecha)}</div></td><td class="n">${min?eur(min.precio):'—'}<div class="mut">${min?esc(min.proveedor||''):''}</div></td></tr>
       ${sel===k?`<tr><td colspan="3" style="background:rgba(127,127,100,.07)"><table>${g.compras.map(c=>`<tr class="click" onclick="verFactura('${c.factura}')"><td>${fFecha(c.fecha)}<div class="mut">${esc(c.proveedor||'')}</div></td><td class="n">${c.cantidad!=null?num(c.cantidad,2)+' '+esc(c.unidad||''):''}</td><td class="n ${min&&c.precio===min.precio?'pos':''}">${c.precio!=null?eur(c.precio):'—'}</td></tr>`).join('')}</table></td></tr>`:''}`).join('')}</table>`
     :`<p class="mut">${D.factura_lineas.length?'Nada coincide con la búsqueda.':'Cuando escanees facturas, aquí verás lo que pagas por cada producto y dónde sale más barato.'}</p>`}</div>`;
 }
 function postPrecios(){
+  if($('#carbBox')) pintarCarburantes();
   const b=$('#pBusca'); if(!b) return;
   b.oninput=()=>{ SUB.precioQ=b.value; const pos=b.selectionStart; render(); const nb=$('#pBusca'); nb.focus(); nb.setSelectionRange(pos,pos); };
   document.querySelectorAll('[data-psel]').forEach(tr=>tr.onclick=()=>{ SUB.precioSel = SUB.precioSel===tr.dataset.psel ? null : tr.dataset.psel; render(); });
@@ -1188,7 +1217,8 @@ async function contextoTecnico(pregunta){
     const pas=dias.filter(x=>x.f<h), sum=(a,k)=>Math.round(a.reduce((s,x)=>s+(x[k]||0),0)*10)/10;
     const sep=`${parseInt(campDe(h))}-09-01`; const desde=pas.filter(x=>x.f>=sep);
     const u30=pas.filter(x=>x.f>=hace(30)), u14=pas.filter(x=>x.f>=hace(14));
-    clima={ lluvia_desde_1_sep_mm:sum(desde,'ll'), lluvia_ult_7d_mm:sum(pas.filter(x=>x.f>=hace(7)),'ll'), lluvia_ult_30d_mm:sum(u30,'ll'), dias_lluvia_ult_30d:u30.filter(x=>x.ll>=1).length,
+    try{ const L=await lluviaReal(fc); if(L) window.__LLUVIA_REAL={estacion:`${L.est.descripcion} (${L.est.municipio}), a ${num(L.km,1)} km`, red:'SUREMET', registrado_desde:L.desde, hoy_mm:L.hoy, ult_7d_mm:L.d7, ult_30d_mm:L.d30, desde_1_sep_mm:L.camp}; }catch(e){}
+    clima={ lluvia_real_estacion: window.__LLUVIA_REAL||null, lluvia_desde_1_sep_mm:sum(desde,'ll'), lluvia_ult_7d_mm:sum(pas.filter(x=>x.f>=hace(7)),'ll'), lluvia_ult_30d_mm:sum(u30,'ll'), dias_lluvia_ult_30d:u30.filter(x=>x.ll>=1).length,
       lluvia_ult_90d_mm:sum(pas,'ll'), heladas_ult_30d:u30.filter(x=>x.tmin<=0).length, tmin_mas_baja_30d:Math.min(...u30.map(x=>x.tmin)), tmax_mas_alta_30d:Math.max(...u30.map(x=>x.tmax)),
       t_media_ult_14d: u14.length?Math.round(u14.reduce((s,x)=>s+(x.tmax+x.tmin)/2,0)/u14.length*10)/10:null, nota:'Datos de modelo meteorológico para la primera finca; las fincas están cerca.' };
     prevision=evaluarTiempo(w,fc).map(x=>({fecha:x.fecha,dia:x.nombre,tiempo:WCODE(x.code),tmin:x.tmin,tmax:x.tmax,lluvia_mm:x.lluvia,rafagas_kmh:x.rafaga,curar:x.spray.txt,trabajar_olivo:x.work.txt,aceituna:x.ace.txt}));
@@ -1385,8 +1415,9 @@ function abrirAplicacion(apl=null, cubaId=null){
     }
     if(!r.ok){ $('#fOk').disabled=false; toast('Error: '+r.error.message); return; }
     recordar('apl',{maquina_id:a.maquina_id, cuba_l:cuba, aplicador:a.aplicador}); recordar('t_finca',finca);
+    let desc=''; if(!apl && r.filas) desc=await descontarAlmacen(r.filas);
     $('#dlg').close(); if(!r.offline) await Promise.all(['aplicaciones','tratamientos','tareas'].map(cargar)); render();
-    toast(`Curación apuntada · ${num(tot)} l de caldo${r.offline?' (en el móvil)':''}`);
+    toast(`Curación apuntada · ${num(tot)} l de caldo${r.offline?' (en el móvil)':''}${desc}`);
   };
   $('#dlg').showModal(); calc();
 }
@@ -1517,12 +1548,12 @@ const EN_COSECHA=()=>[10,11,12,1,2,3].includes(new Date().getMonth()+1);
 const APUNTAR=[
   ['Gasto','💶',"abrir('gastos')"],['Jornada','👷',"abrirParte()"],['Pesada','⚖️',"abrir('pesadas')"],['Curación','💧',"abrirAplicacion()"],
   ['Factura','📄',"escanear()"],['Nota de campo','📝',"abrir('notas')"],['Tarea','✅',"abrir('tareas')"],['Cobro','💰',"abrir('ingresos')"],
-  ['Día perdido','🌧️',"abrir('dias_perdidos')"],['Recibo de riego','🚿',"abrir('riego_pagos')"],
+  ['Reunión o cita','📅',"abrir('reuniones')"],['Día perdido','🌧️',"abrir('dias_perdidos')"],['Recibo de riego','🚿',"abrir('riego_pagos')",'mas:riego'],['Producto al almacén','📦',"abrir('almacen')",'campo:almacen'],
 ];
 function abrirApuntar(fid){
   $('#frm').oninput=null; $('#frm').onchange=null; $('#frm').onsubmit=e=>e.preventDefault();
   APUNTAR_FINCA=fid||null;
-  $('#frm').innerHTML=`<h3>¿Qué quieres apuntar?</h3><div class="apuntar">${APUNTAR.map(([t,ic,fn])=>`<button type="button" onclick="$('#dlg').close();${fn}"><span>${ic}</span>${t}</button>`).join('')}</div>
+  $('#frm').innerHTML=`<h3>¿Qué quieres apuntar?</h3><div class="apuntar">${APUNTAR.filter(a=>!a[3]||visto(a[3])).map(([t,ic,fn])=>`<button type="button" onclick="$('#dlg').close();${fn}"><span>${ic}</span>${t}</button>`).join('')}</div>
     <div class="row acciones" style="justify-content:flex-end"><button type="button" class="btn sec" onclick="$('#dlg').close()">Cerrar</button></div>`;
   $('#dlg').showModal();
 }
@@ -1716,6 +1747,13 @@ const MAPA=[
   ['Qué toca hacer y cuándo','Campo → Qué toca',"SUB.campo='labores';ir('campo')"],
   ['Preguntar al técnico','Campo → Técnico',"SUB.campo='tecnico';ir('campo')"],
   ['Fincas arrendadas y la renta que pago','Ficha de la finca → «La llevo arrendada»; se paga en Jornales → Qué debo',"SUB.jornales='cuentas';ir('jornales')"],
+  ['Reuniones y citas (riego, cooperativa, charlas…)','Campo → Reuniones, o el botón +',"SUB.campo='reun';ir('campo')"],
+  ['Almacén de productos y envases vacíos','Campo → Almacén',"SUB.campo='almacen';ir('campo')"],
+  ['Plazos (PAC, seguro, renta…), devolución del gasóleo y resumen para la renta','Cuentas → Papeles y plazos',"SUB.cuentas='papeles';ir('cuentas')"],
+  ['Comparar campañas por finca','Cuentas → Cosecha, al final',"SUB.cuentas='cosecha';ir('cuentas')"],
+  ['Jornadas por trabajador para la Seguridad Social','Jornales → Gente y empresas → Carnés',"abrirJornadasSS()"],
+  ['Copia de seguridad','Más → Ajustes, al final',"abrirCopia()"],
+  ['Ocultar secciones que no uso','Más → Ajustes → Secciones que uso',"SUB.mas='ajustes';ir('mas')"],
   ['DAT para llevar la aceituna a la almazara','Cosecha → «DAT», o Más → Cuaderno',"abrirDAT()"],
   ['Cuaderno de campo (modelo Junta)','Campo → Curaciones → «Cuaderno de campo»',"abrirCuaderno()"],
   ['Cubas estándar (tus mezclas de siempre)','Campo → Curaciones, al final',"SUB.campo='trat';ir('campo')"],
@@ -1893,8 +1931,8 @@ function vAyuda(){ return `<div class="card"><h2>¿Dónde está cada cosa?</h2>$
 
 function vCuentas(){
   const s=SUB.cuentas||'gastos';
-  const tabs=`<div class="tabs2">${[['gastos','Gastos'],['ingresos','Cobros'],['cosecha','Cosecha'],['facturas','Facturas'],['precios','Precios']].map(([k,t])=>`<button data-sub="cuentas:${k}" class="${s===k?'on':''}">${t}</button>`).join('')}</div>`;
-  return tabs+({gastos:vGastos,ingresos:vIngresos,cosecha:vCosecha,facturas:vFacturas,precios:vPrecios}[s])();
+  const tabs=`<div class="tabs2">${[['gastos','Gastos'],['ingresos','Cobros'],['cosecha','Cosecha'],['papeles','Papeles y plazos'],['facturas','Facturas'],['precios','Precios']].filter(([k])=>visto('cuentas:'+k)).map(([k,t])=>`<button data-sub="cuentas:${k}" class="${s===k?'on':''}">${t}</button>`).join('')}</div>`;
+  return tabs+({gastos:vGastos,ingresos:vIngresos,cosecha:()=>vCosecha()+htmlCompararCampanas(),papeles:vPapeles,facturas:vFacturas,precios:vPrecios}[s])();
 }
 
 // ===== Vistas =====
@@ -1917,7 +1955,7 @@ function vInicio(){
   fab(()=>abrirApuntar());
   if(!D.fincas.length) return `<div class="card"><h2>Empieza por aquí</h2><p>Da de alta tus fincas con su número de olivos (sirve para repartir los gastos comunes) y sus coordenadas (para el tiempo).</p><button class="btn" onclick="ir('mas');setTimeout(()=>abrir('fincas'),0)">Añadir finca</button></div>`;
   const C=calcular(CAMP), m=C.totI-C.totG, av=avisos();
-  const avHtml = av.length ? av.map(a=>`<div class="aviso ${a.c}" ${a.id?`data-ed="tareas:${a.id}" style="cursor:pointer"`:a.maq?`data-ed="maquinas:${a.maq}" style="cursor:pointer"`:a.trab?`data-ed="trabajadores:${a.trab}" style="cursor:pointer"`:a.tit?`onclick="abrirDatosCuaderno()" style="cursor:pointer"`:a.go?`onclick="SUB.jornales='cuentas';ir('jornales')" style="cursor:pointer"`:a.riego?`onclick="SUB.mas='riego';ir('mas')" style="cursor:pointer"`:''}>${a.t}</div>`).join('') : '<div class="aviso ok">Sin tareas ni vencimientos en los próximos días.</div>';
+  const avHtml = av.length ? av.map(a=>`<div class="aviso ${a.c}" ${a.id?`data-ed="tareas:${a.id}" style="cursor:pointer"`:a.maq?`data-ed="maquinas:${a.maq}" style="cursor:pointer"`:a.trab?`data-ed="trabajadores:${a.trab}" style="cursor:pointer"`:a.tit?`onclick="abrirDatosCuaderno()" style="cursor:pointer"`:a.fn?`onclick="${a.fn}" style="cursor:pointer"`:a.go?`onclick="SUB.jornales='cuentas';ir('jornales')" style="cursor:pointer"`:a.riego?`onclick="SUB.mas='riego';ir('mas')" style="cursor:pointer"`:''}>${a.t}</div>`).join('') : '<div class="aviso ok">Sin tareas ni vencimientos en los próximos días.</div>';
   const cats=Object.entries(C.porCat).sort((a,b)=>b[1]-a[1]); const mx=cats[0]?.[1]||1;
   const filas=C.fincas.map(f=>{ const r=C.R[f.id]; const g=r.directo+r.comun, i=r.ingD+r.ingC, mg=i-g;
     return `<tr class="click" onclick="VOLVER='inicio';verFinca('${f.id}')"><td>${esc(f.nombre)}<div class="mut">${f.activa?`${num(f.olivos)} olivos · ${num(C.totOl?f.olivos/C.totOl*100:0,1)} %`:'inactiva'}</div></td><td class="n">${eur(g)}<div class="mut">${eur(r.directo)} propios<br>${eur(r.comun)} común</div></td><td class="n">${eur(i)}</td><td class="n ${mg>=0?'pos':'neg'}"><b>${eur(mg)}</b><div class="mut">${f.olivos?eur(g/f.olivos)+'/olivo':''}</div></td></tr>`; }).join('');
@@ -1971,8 +2009,10 @@ function vIngresos(){
 function vCampo(){
   const s=SUB.campo||'labores';
   fab(s==='trat'?()=>abrirAplicacion():s==='notas'?'notas':'tareas');
-  const tabs=`<div class="tabs2">${[['labores','Qué toca'],['tecnico','Técnico'],['tareas','Tareas'],['notas','Notas'],['trat','Curaciones'],['calc','Calcular dosis']].map(([k,t])=>`<button data-sub="campo:${k}" class="${s===k?'on':''}">${t}</button>`).join('')}</div>`;
+  const tabs=`<div class="tabs2">${[['labores','Qué toca'],['tecnico','Técnico'],['tareas','Tareas'],['reun','Reuniones'],['notas','Notas'],['trat','Curaciones'],['almacen','Almacén'],['calc','Calcular dosis']].filter(([k])=>visto('campo:'+k)).map(([k,t])=>`<button data-sub="campo:${k}" class="${s===k?'on':''}">${t}</button>`).join('')}</div>`;
   if(s==='labores') return tabs+vLabores();
+  if(s==='reun'){ fab('reuniones'); return tabs+vReuniones(); }
+  if(s==='almacen'){ fab('almacen'); return tabs+vAlmacen(); }
   if(s==='notas'){ const ab=D.notas.filter(n=>!n.resuelta), re=D.notas.filter(n=>n.resuelta).slice(0,10);
     return tabs+`<div class="card"><h2>Notas de campo</h2>${htmlNotas(ab)}</div>${re.length?`<div class="card"><h2>Resueltas</h2>${htmlNotas(re)}</div>`:''}`; }
   if(s==='tecnico'){ fab(null); return tabs+vTecnico(); }
@@ -2132,7 +2172,8 @@ async function postTiempo(){
   <p class="mut">«Trabajar en el olivo» (pestugar, desvaretar, desbrozar, podar) y «Aceituna» tienen en cuenta si el olivo está mojado por lluvia, rocío o niebla. Atomizar evita las horas con la hoja mojada. ${f.umbral_hr!=null||Number(f.retraso_secado_h)?`Ajustes de ${esc(f.nombre)}: ${f.umbral_hr!=null?`se moja desde ${num(f.umbral_hr)} % de humedad`:''}${f.umbral_hr!=null&&Number(f.retraso_secado_h)?' y ':''}${Number(f.retraso_secado_h)?`${num(f.retraso_secado_h,1)} h más de secado`:''}.`:''} Es una estimación: apunta los días que no se pueda trabajar y la app se irá ajustando a esta finca.</p>
   ${cambia?`<div class="aviso">Según ${cal.n} días apuntados, en <b>${esc(f.nombre)}</b> ${cal.umbral!=null?`la oliva se moja ya con ${num(cal.umbral)} % de humedad (en general ${num(AJ.umb.moj_hr)} %)`:'la humedad a la que se moja es la normal'}${cal.retraso?` y tarda ${cal.retraso>0?num(cal.retraso,1)+' h más':num(-cal.retraso,1)+' h menos'} en secarse`:''}. <button class="btn sm" onclick="aplicarAjuste('${f.id}',${cal.umbral??'null'},${cal.retraso})">Aplicar</button></div>`:''}
   <p class="mut">Pulsa un día para verlo hora a hora. Los criterios se cambian en Más → Ajustes.</p></div>
-  ${sel?horario(w,sel):''}`;
+  ${sel?horario(w,sel):''}<div id="lluviaBox"></div>`;
+  pintarLluvia(f);
 }
 let FINCA_H=null;
 function horario(w,fecha){
@@ -2161,7 +2202,7 @@ async function postInicio(){
 function vMas(){
   const s=SUB.mas||'fincas';
   fab(s==='fincas'?'fincas':s==='maq'?'maquinas':s==='riego'?'riego_pagos':null);
-  const tabs=`<div class="tabs2">${[['fincas','Fincas'],['riego','Riego'],['maq','Máquinas'],['ajustes','Ajustes'],['ayuda','¿Dónde está?']].map(([k,t])=>`<button data-sub="mas:${k}" class="${s===k?'on':''}">${t}</button>`).join('')}</div>`;
+  const tabs=`<div class="tabs2">${[['fincas','Fincas'],['riego','Riego'],['maq','Máquinas'],['ajustes','Ajustes'],['ayuda','¿Dónde está?']].filter(([k])=>visto('mas:'+k)).map(([k,t])=>`<button data-sub="mas:${k}" class="${s===k?'on':''}">${t}</button>`).join('')}</div>`;
   if(s==='riego') return tabs+vRiego();
   if(s==='ayuda') return tabs+vAyuda();
   if(s==='fincas'){
@@ -2192,10 +2233,11 @@ function vMas(){
     <b>Avisos</b><div class="grid2">${inp('aviso_dias','Avisar tareas con (días)')}${inp('itv_dias','Avisar ITV/seguro con (días)')}</div>
     <p class="mut">Valores orientativos: revisa siempre la etiqueta del producto, que manda sobre esto.</p>
   </div>
+  <div class="card"><h2>Secciones que uso</h2><p class="mut">Desmarca lo que no uses para que no estorbe. Se puede volver a poner cuando quieras.</p>${SECCIONES.map(([k,t])=>`<label class="chk"><input type="checkbox" data-secc="${k}" ${visto(k)?'checked':''}> ${esc(t)}</label>`).join('')}</div>
   <div class="card"><h2>Cuaderno de campo<span class="sp"></span><button class="btn sm" onclick="abrirCuaderno()">Sacar cuaderno</button></h2><p class="mut">Tus datos de titular, carné, asesor y almazaras para el cuaderno de explotación.</p><button class="btn sec sm" onclick="abrirDatosCuaderno()">Datos del titular y almazaras</button> <button class="btn sec sm" onclick="abrirDAT()">Sacar DAT</button></div>
   <div class="card"><h2>Labores del calendario<span class="sp"></span><button class="btn sec sm" onclick="nuevaLabor()">+ Labor propia</button></h2><p class="mut">Desmarca las que no hagas (p. ej. tratamiento de suelo si llevas cubierta).</p>
     ${[...LABORES,...(AJ.labores_propias||[]).map(p=>({...p,propia:1}))].map(L=>`<label class="chk"><input type="checkbox" data-labor="${L.id}" ${(AJ.labores_off||[]).includes(L.id)?'':'checked'}> ${esc(L.nombre)} <span class="mut">${L.meses?L.meses.map(m=>MESES[m]).join(', '):L.tras?'después de '+L.tras.fam:''}</span>${L.propia?` <button type="button" class="btn del sm" onclick="borrarLabor('${L.id}')">Quitar</button>`:''}</label>`).join('')}</div>
-  <div class="row"><button class="btn" id="ajGuardar">Guardar ajustes</button><button class="btn sec" onclick="copia()">Descargar copia de seguridad</button><button class="btn sec" onclick="salir()">Cerrar sesión</button></div>
+  <div class="row"><button class="btn" id="ajGuardar">Guardar ajustes</button><button class="btn sec" onclick="abrirCopia()">Copia de seguridad</button><button class="btn sec" onclick="salir()">Cerrar sesión</button></div>
   <p class="creditos">Olivas · versión ${VERSION} (${VERSION_FECHA})<br>© 2026 Alfonso Carrascosa Martínez<br>Hecha con Claude, de Anthropic</p>`;
 }
 function postMas(){
@@ -2204,9 +2246,290 @@ function postMas(){
     AJ.cats=$('#ajCats').value.split('\n').map(s=>s.trim()).filter(Boolean);
     document.querySelectorAll('[data-umb]').forEach(i=>{ const v=pn(i.value); if(v!=null&&!isNaN(v)) AJ.umb[i.dataset.umb]=v; });
     AJ.labores_off=[...document.querySelectorAll('[data-labor]')].filter(i=>!i.checked).map(i=>i.dataset.labor);
+    AJ.ocultar=[...document.querySelectorAll('[data-secc]')].filter(i=>!i.checked).map(i=>i.dataset.secc);
     METEO_CACHE={}; guardarAjustes();
   };
 }
+
+// ===== Secciones visibles =====
+const SECCIONES=[['mas:riego','Riego (Más)'],['campo:tecnico','Técnico (Campo)'],['campo:reun','Reuniones (Campo)'],['campo:almacen','Almacén (Campo)'],['campo:calc','Calcular dosis (Campo)'],['cuentas:facturas','Facturas (Cuentas)'],['cuentas:precios','Precios (Cuentas)'],['cuentas:papeles','Papeles y plazos (Cuentas)']];
+function visto(k){ return !(AJ.ocultar||[]).includes(k); }
+
+// ===== Reuniones =====
+function gcalUrl(r){
+  const d=r.fecha.replace(/-/g,''), h=(r.hora||'').replace(':','');
+  let dates; if(h){ const [hh,mm]=r.hora.split(':').map(Number); const fin=new Date(2000,0,1,hh+2,mm); dates=`${d}T${h}00/${d}T${String(fin.getHours()).padStart(2,'0')}${String(fin.getMinutes()).padStart(2,'0')}00`; }
+  else dates=`${d}/${addDias(r.fecha,1).replace(/-/g,'')}`;
+  const q=new URLSearchParams({action:'TEMPLATE',text:r.titulo,dates,ctz:'Europe/Madrid',details:[r.tipo,r.notas].filter(Boolean).join('\n'),location:r.lugar||''});
+  return 'https://calendar.google.com/calendar/render?'+q.toString();
+}
+function mapaUrl(l){ return 'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(l); }
+function filaReunion(r){
+  const d=difDias(hoy(),r.fecha);
+  return `<tr class="click" data-ed="reuniones:${r.id}"><td><b>${esc(r.titulo)}</b><div class="mut">${fFecha(r.fecha)}${r.hora?' · '+esc(r.hora):''}${r.tipo?' · '+esc(r.tipo):''}${r.lugar?` · <a href="${mapaUrl(r.lugar)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${esc(r.lugar)}</a>`:''}</div>${r.notas?`<div class="mut">${esc(r.notas)}</div>`:''}</td>
+    <td class="n">${!r.hecha&&d>=0?`<a class="btn sec sm" href="${gcalUrl(r)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">A mi calendario</a>`:''}</td></tr>`;
+}
+function vReuniones(){
+  const h=hoy(), prox=D.reuniones.filter(r=>!r.hecha&&r.fecha>=h).sort((a,b)=>(a.fecha+(a.hora||'')).localeCompare(b.fecha+(b.hora||''))), pas=D.reuniones.filter(r=>r.hecha||r.fecha<h).sort((a,b)=>b.fecha.localeCompare(a.fecha)).slice(0,15);
+  return `<div class="card"><h2>Próximas reuniones y citas<span class="sp"></span><button class="btn sm" onclick="abrir('reuniones')">+ Reunión</button></h2>${prox.length?`<table>${prox.map(filaReunion).join('')}</table>`:'<p class="mut">Riego, cooperativa, proyectos, charlas… Apúntalas con día, hora y sitio y te aviso en Inicio.</p>'}</div>
+  <p class="mut" style="margin:-4px 0 12px">«A mi calendario» la mete en Google Calendar con un toque. <a href="#" onclick="event.preventDefault();ics()">O pasa todos los avisos y citas al calendario del móvil (.ics)</a></p>
+  ${pas.length?`<div class="card"><h2>Pasadas</h2><p class="mut">Ábrelas para apuntar lo que se habló.</p><table>${pas.map(filaReunion).join('')}</table></div>`:''}`;
+}
+
+// ===== Almacén =====
+function normU(c,u){ u=(u||'').toLowerCase().trim(); c=Number(c); if(!(c>0)) return null;
+  if(/^(l|lt|litros?)$/.test(u)) return {n:c,u:'l'}; if(/^(ml|cc)$/.test(u)) return {n:c/1000,u:'l'};
+  if(/^(kg|kgs|kilos?)$/.test(u)) return {n:c,u:'kg'}; if(/^(g|gr|gramos?)$/.test(u)) return {n:c/1000,u:'kg'};
+  return {n:c,u:'ud'}; }
+function buscaAlm(nombre){ const n=(nombre||'').toLowerCase().trim(); if(!n) return null;
+  return D.almacen.find(a=>a.activo!==false&&a.nombre.toLowerCase().trim()===n) || D.almacen.find(a=>a.activo!==false&&(a.nombre.toLowerCase().includes(n)||n.includes(a.nombre.toLowerCase().trim()))&&a.nombre.length>3); }
+async function descontarAlmacen(filas){
+  const hechos=[];
+  for(const t of filas){ const a=buscaAlm(t.producto); if(!a||t.cantidad==null||!t.unidad) continue; if((a.unidad||'l')!==t.unidad) continue;
+    const nueva=Math.round((Number(a.cantidad||0)-Number(t.cantidad))*1000)/1000;
+    const {error}=await sb.from('olv_almacen').update({cantidad:nueva}).eq('id',a.id); if(!error){ a.cantidad=nueva; hechos.push(a.nombre); } }
+  if(hechos.length) await cargar('almacen');
+  return hechos.length?` · descontado del almacén: ${hechos.join(', ')}`:'';
+}
+function lineasAlmacenables(){ const usadas=new Set(AJ.alm_lineas||[]);
+  return D.factura_lineas.filter(l=>!usadas.has(l.id)&&/fito|herbic|abono|foliar|amino|insect|fung/i.test(`${l.categoria} ${l.producto}`)).slice(0,30); }
+async function lineaAlAlmacen(id){
+  const l=D.factura_lineas.find(x=>x.id===id); if(!l) return; const q=normU(l.cantidad,l.unidad)||{n:null,u:'ud'};
+  const nom=l.nombre_comun||l.producto, a=buscaAlm(nom); let r;
+  if(a&&q.n!=null&&(a.unidad||'l')===q.u) r=await sb.from('olv_almacen').update({cantidad:Math.round((Number(a.cantidad||0)+q.n)*1000)/1000}).eq('id',a.id);
+  else r=await insertar('almacen',{nombre:nom,tipo:/abono/i.test(l.categoria||'')?'Abono':/herbic/i.test(`${l.categoria} ${l.producto}`)?'Herbicida':/foliar|amino/i.test(`${l.categoria} ${l.producto}`)?'Foliar / aminoácidos':'Fitosanitario',cantidad:q.n,unidad:q.u,activo:true});
+  if(r.error){ toast('Error: '+r.error.message); return; }
+  AJ.alm_lineas=[...(AJ.alm_lineas||[]),id]; await guardarAjustes(); await cargar('almacen'); render(); toast(`${nom} al almacén${q.u==='ud'?' (revisa la cantidad)':''}`);
+}
+function envasesPendientes(){ const u=AJ.sigfito_ult||'0000'; return D.tratamientos.filter(t=>t.fecha>u&&!esAbono(t)).length; }
+function vAlmacen(){
+  const h=hoy(), act=D.almacen.filter(a=>a.activo!==false), lin=lineasAlmacenables();
+  const grupos=TIPOS_ALM.map(t=>[t,act.filter(a=>(a.tipo||'Otro')===t)]).filter(g=>g[1].length);
+  const est=a=>{ if(!a.caduca) return ''; const d=difDias(h,a.caduca); return ` · <span class="dot ${d<0?'r':d<=90?'a':'g'}"></span>${d<0?'caducado':'caduca'} ${fFecha(a.caduca)}`; };
+  const env=envasesPendientes();
+  return `<div class="card"><h2>Almacén<span class="sp"></span><button class="btn sm" onclick="abrir('almacen')">+ Producto</button></h2>
+    ${grupos.length?grupos.map(([t,l])=>`<div class="grp">${esc(t)}</div><table>${l.map(a=>`<tr class="click" data-ed="almacen:${a.id}"><td>${esc(a.nombre)}<div class="mut">${a.num_registro?'Reg. '+esc(a.num_registro):''}${est(a)}</div></td><td class="n ${a.cantidad!=null&&Number(a.cantidad)<=0?'neg':''}">${a.cantidad!=null?num(a.cantidad,2)+' '+(a.unidad==='ud'?'ud':a.unidad||''):'—'}</td></tr>`).join('')}</table>`).join(''):'<p class="mut">Apunta lo que tienes en la nave. Al apuntar una curación se descuenta solo si el nombre coincide.</p>'}</div>
+    ${lin.length?`<div class="card"><h2>De tus facturas</h2><p class="mut">Toca una línea para meterla en el almacén.</p><table>${lin.map(l=>`<tr class="click" onclick="lineaAlAlmacen('${l.id}')"><td>${esc(l.nombre_comun||l.producto)}<div class="mut">${esc(l.categoria||'')}</div></td><td class="n">${l.cantidad!=null?num(l.cantidad,2)+' '+esc(l.unidad||''):''}</td></tr>`).join('')}</table></div>`:''}
+    <div class="card"><h2>Envases vacíos (SIGFITO)</h2><p>${AJ.sigfito_ult?`Últimos llevados el <b>${fFecha(AJ.sigfito_ult)}</b>. `:'Aún no has apuntado ninguna entrega. '}${env?`Desde entonces: <b>${env}</b> ${env===1?'producto aplicado':'productos aplicados'}.`:''}</p>
+    <p class="mut">Los envases vacíos de fitosanitarios se llevan a un punto SIGFITO (cooperativa o tienda) y te dan un justificante: guárdalo con el cuaderno.</p><button class="btn sec sm" onclick="AJ.sigfito_ult=hoy();guardarAjustes();render()">Los he llevado hoy</button></div>`;
+}
+
+// ===== Papeles y plazos =====
+const PLAZOS_DEF=[
+  {id:'pac',nombre:'Solicitud única de la PAC',ini:'02-01',fin:'04-30',nota:'El fin cambia algunos años (en 2026 se amplió). Confírmalo con tu oficina.'},
+  {id:'gasoil',nombre:'Devolución del impuesto del gasóleo agrícola (litros del año anterior)',ini:'04-01',fin:'12-31',nota:'Por Hacienda o tu organización agraria. Guarda las facturas.'},
+  {id:'renta',nombre:'Declaración de la renta',ini:'04-02',fin:'06-30',nota:'Fechas orientativas: Hacienda las publica cada año.'},
+  {id:'seguro',nombre:'Seguro agrario del olivar',ini:'09-01',fin:'11-30',nota:'El plazo exacto depende del módulo: confírmalo con tu tomador.'}];
+function plazos(){ return AJ.plazos||PLAZOS_DEF; }
+function plazoWeb(id,y){ const w=AJ.plazos_web; return w&&w.anio===y ? (w.items||[]).find(i=>i.id===id) : null; }
+function plazoAnio(p,y){ const w=plazoWeb(p.id,y); if(w) return {ini:w.ini, fin:w.fin, web:w}; return {ini:`${y}-${p.ini}`, fin:`${y}-${p.fin}`}; }
+function plazoHecho(p,y){ return (AJ.plazos_hechos||{})[p.id+':'+y]; }
+async function marcarPlazo(id,y,v=true){ AJ.plazos_hechos={...(AJ.plazos_hechos||{})}; if(v) AJ.plazos_hechos[id+':'+y]=hoy(); else delete AJ.plazos_hechos[id+':'+y]; await guardarAjustes(); render(); }
+function gasoilAnio(y){
+  const ini=`${y}-01-01`, fin=`${y}-12-31`; const esG=t=>/gas[oó]le?o|gasoil|gas-?oil/i.test(t||'');
+  const fac=D.facturas.filter(f=>f.fecha>=ini&&f.fecha<=fin); let lit=0; const conLin=new Set();
+  fac.forEach(f=>D.factura_lineas.filter(l=>l.factura_id===f.id&&esG(`${l.producto} ${l.nombre_comun} ${l.categoria}`)).forEach(l=>{ const q=normU(l.cantidad,l.unidad||'l'); if(q&&q.u==='l'){ lit+=q.n; conLin.add(f.id); } }));
+  const gs=D.gastos.filter(g=>g.fecha>=ini&&g.fecha<=fin&&/gas[oó]|gasoil/i.test(g.categoria||''));
+  gs.forEach(g=>{ if(g.litros&&!(g.factura_id&&conLin.has(g.factura_id))) lit+=Number(g.litros); });
+  const imp=gs.reduce((a,g)=>a+Number(g.importe),0), sinL=gs.filter(g=>!g.litros&&!(g.factura_id&&conLin.has(g.factura_id))).length;
+  return {lit:Math.round(lit), imp, sinL, n:gs.length};
+}
+const GASOIL_EUR_L=0.06371; // devolución por litro de la última convocatoria (litros de 2025)
+function resumenAnio(y){
+  const ini=`${y}-01-01`, fin=`${y}-12-31`, en=x=>x.fecha>=ini&&x.fecha<=fin;
+  const ing={}; D.ingresos.filter(en).forEach(i=>ing[i.tipo||'Otros']=(ing[i.tipo||'Otros']||0)+Number(i.importe));
+  const gas={}; const add=(k,v)=>{ if(v) gas[k]=(gas[k]||0)+Number(v); };
+  D.gastos.filter(en).forEach(g=>add(g.categoria||'Otros',g.importe));
+  D.jornales.filter(en).forEach(j=>add(j.empresa_id?'Empresas de servicios':'Jornales',j.importe));
+  D.servicios.filter(en).forEach(x=>add('Empresas de servicios',x.importe));
+  D.riego_pagos.filter(en).forEach(x=>add('Riego',x.importe));
+  const kilos=D.pesadas.filter(en).reduce((a,p)=>a+Number(p.kilos),0);
+  const totI=Object.values(ing).reduce((a,b)=>a+b,0), totG=Object.values(gas).reduce((a,b)=>a+b,0);
+  const amort=D.maquinas.filter(m=>m.precio_compra>0&&m.anos_amortizacion>0&&m.fecha_compra&&+m.fecha_compra.slice(0,4)<=y&&+m.fecha_compra.slice(0,4)+Number(m.anos_amortizacion)>y).map(m=>[m.nombre,m.precio_compra/m.anos_amortizacion]);
+  return {y,ing,gas,totI,totG,kilos,amort,gasoil:gasoilAnio(y)};
+}
+function vPapeles(){
+  fab(null);
+  const h=hoy(), y=+h.slice(0,4), yR=SUB.anioR||(+h.slice(5,7)<=6?y-1:y), R=resumenAnio(yR), G=gasoilAnio(y-1), gp=plazoHecho({id:'gasoil'},y);
+  const filasO=o=>Object.entries(o).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<tr><td>${esc(k)}</td><td class="n">${eur(v)}</td></tr>`).join('');
+  const pl=plazos().map(p=>{ const {ini,fin}=plazoAnio(p,y), he=plazoHecho(p,y); const est=he?`<span class="pos">hecho el ${fFecha(he)}</span>`:h<ini?`<span class="mut">empieza el ${fFecha(ini)}</span>`:h>fin?'<span class="mut">cerrado · ¿lo hiciste?</span>':`<span class="dot ${difDias(h,fin)<=15?'r':'a'}"></span>abierto hasta el ${fFecha(fin)}`;
+    const wb=plazoAnio(p,y).web;
+    return `<tr><td>${esc(p.nombre)}<div class="mut">${fFecha(ini).slice(0,5)} – ${fFecha(fin).slice(0,5)}${wb?` · ${wb.seguro?'<b>comprobado</b>':'estimado'}${wb.nota?': '+esc(wb.nota):''}${wb.url?` · <a href="${esc(wb.url)}" target="_blank" rel="noopener">${esc(wb.fuente||'fuente')}</a>`:''}`:(p.nota?' · '+esc(p.nota):'')}</div></td><td class="n">${est}<br><button class="btn sec sm" style="margin-top:4px" onclick="marcarPlazo('${p.id}',${y},${he?'false':'true'})">${he?'Desmarcar':'Hecho'}</button></td></tr>`; }).join('');
+  return `<div class="card"><h2>Plazos del año<span class="sp"></span><button class="btn sec sm" onclick="editarPlazos()">Cambiar</button></h2><table>${pl}</table><p class="mut">Te aviso en Inicio cuando se abre cada plazo y 15 días antes de que cierre. ${AJ.plazos_web&&AJ.plazos_web.anio===y?`Fechas buscadas en internet el ${fFecha(String(AJ.plazos_web.fecha).slice(0,10))}; las «estimadas» no estaban publicadas aún.`:'Fechas orientativas.'} <a href="#" onclick="event.preventDefault();comprobarPlazos(true)">Comprobar ahora en internet</a></p></div>
+  <div class="card"><h2>Devolución del gasóleo agrícola · litros de ${y-1}</h2>
+    <div class="kpis"><div class="kpi"><span>Litros ${y-1}</span><b>${num(G.lit)}</b></div><div class="kpi"><span>Te devolverían aprox.</span><b>${eur(G.lit*GASOIL_EUR_L)}</b></div></div>
+    <p class="mut">Cuenta los litros de las facturas escaneadas y de los gastos de gasoil con litros puestos.${G.sinL?` <b>${G.sinL} ${G.sinL===1?'gasto':'gastos'} de gasoil sin litros</b>: ábrelos y ponlos para que cuadre.`:''} Calculado a ${num(GASOIL_EUR_L*1000,2)} € por 1.000 l (lo que se devolvió por los litros de 2025): puede cambiar. Solo vale el gasóleo agrícola (bonificado) y hace falta tener las facturas.</p>
+    <button class="btn ${gp?'sec':''} sm" onclick="marcarPlazo('gasoil',${y},${gp?'false':'true'})">${gp?'Pedida el '+fFecha(gp)+' · desmarcar':'Ya la he pedido'}</button></div>
+  <div class="card"><h2>Resumen para la renta · ${yR}<span class="sp"></span>${[y-1,y].map(a=>`<button class="btn ${a===yR?'':'sec'} sm" onclick="SUB.anioR=${a};render()">${a}</button>`).join(' ')}</h2>
+    <p class="mut">Año natural (enero a diciembre), que es lo que pide Hacienda.</p>
+    <div class="kpis"><div class="kpi"><span>Cobrado</span><b>${eur(R.totI)}</b></div><div class="kpi"><span>Gastado</span><b>${eur(R.totG)}</b></div><div class="kpi"><span>Diferencia</span><b class="${R.totI-R.totG<0?'neg':'pos'}">${eur(R.totI-R.totG)}</b></div><div class="kpi"><span>Kilos entregados</span><b>${num(R.kilos)}</b></div></div>
+    <b>Cobros</b><table>${filasO(R.ing)||'<tr><td class="mut">Nada este año</td></tr>'}</table>
+    <b>Gastos</b><table>${filasO(R.gas)||'<tr><td class="mut">Nada este año</td></tr>'}</table>
+    ${R.amort.length?`<p class="mut">Amortización de maquinaria (no incluida arriba): ${R.amort.map(([n,v])=>esc(n)+' '+eur(v)).join(', ')}.</p>`:''}
+    <p class="mut">${R.ing['Compensación IVA (REAGP)']?'':'Si la almazara te paga la compensación del IVA (REAGP) aparte, apúntala como cobro de ese tipo. '}Esto es un resumen de tus apuntes para el gestor, no la declaración.</p>
+    <div class="row"><button class="btn sec sm" onclick="excelResumen(${yR})">Excel para el gestor</button><button class="btn sec sm" onclick="compartir(textoResumen(${yR}))">Enviar resumen</button></div></div>`;
+}
+function textoResumen(y){ const R=resumenAnio(y); const l=o=>Object.entries(o).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`- ${k}: ${eur(v)}`).join('\n');
+  return `Olivas · resumen ${y}\nCobros: ${eur(R.totI)}\n${l(R.ing)}\nGastos: ${eur(R.totG)}\n${l(R.gas)}\nKilos entregados: ${num(R.kilos)}\nGasóleo: ${num(R.gasoil.lit)} litros`; }
+async function cargarXLSX(){ if(!window.XLSX){ await new Promise((ok,ko)=>{ const s=document.createElement('script'); s.src='https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js'; s.onload=ok; s.onerror=()=>ko(new Error('No se pudo cargar el generador de Excel (¿sin cobertura?)')); document.head.append(s); }); } }
+function hojaXLSX(wb,nombre,filas){ const ws=XLSX.utils.aoa_to_sheet(filas); ws['!cols']=(filas[0]||[]).map((_,i)=>({wch:Math.min(45,Math.max(10,...filas.slice(0,200).map(r=>String(r[i]??'').length+2)))})); XLSX.utils.book_append_sheet(wb,ws,nombre.slice(0,31)); }
+async function excelResumen(y){ try{ await cargarXLSX(); }catch(e){ toast(e.message); return; }
+  const R=resumenAnio(y), wb=XLSX.utils.book_new(), ini=`${y}-01-01`, fin=`${y}-12-31`, en=x=>x.fecha>=ini&&x.fecha<=fin;
+  hojaXLSX(wb,'Resumen',[['Concepto','Importe €'],['COBROS',R.totI],...Object.entries(R.ing),['GASTOS',R.totG],...Object.entries(R.gas),[],['Kilos entregados',R.kilos],['Litros de gasóleo',R.gasoil.lit],...R.amort.map(([n,v])=>['Amortización '+n,Math.round(v*100)/100])]);
+  hojaXLSX(wb,'Cobros',[['Fecha','Tipo','Finca','Kilos','€/kg','Importe','Notas'],...D.ingresos.filter(en).map(i=>[i.fecha,i.tipo,fincaNom(i.finca_id),Number(i.kilos)||'',Number(i.precio_kg)||'',Number(i.importe),i.notas||''])]);
+  hojaXLSX(wb,'Gastos',[['Fecha','Categoría','Concepto','Proveedor','Finca','Litros','Importe'],...D.gastos.filter(en).map(g=>[g.fecha,g.categoria,g.concepto||'',g.proveedor||'',fincaNom(g.finca_id),Number(g.litros)||'',Number(g.importe)])]);
+  hojaXLSX(wb,'Jornales',[['Fecha','Quién','Finca','Faena','Horas','Importe'],...D.jornales.filter(en).map(j=>[j.fecha,j.empresa_id?empNom(j.empresa_id):trabNom(j.trabajador_id),fincaNom(j.finca_id),j.tarea||'',Number(j.horas),Number(j.importe)]),...D.servicios.filter(en).map(x=>[x.fecha,empNom(x.empresa_id),fincaNom(x.finca_id),'Por kilos','',Number(x.importe)])]);
+  XLSX.writeFile(wb,`Olivas_resumen_${y}.xlsx`);
+}
+function editarPlazos(){
+  const L=plazos(); const f=(p,i)=>`<div class="lab" data-pl="${i}"><label>Qué<input data-pk="nombre" value="${esc(p.nombre)}"></label><div class="grid2"><label>Desde (día/mes)<input data-pk="ini" value="${p.ini.split('-').reverse().join('/')}" placeholder="01/02"></label><label>Hasta (día/mes)<input data-pk="fin" value="${p.fin.split('-').reverse().join('/')}" placeholder="30/04"></label></div><label>Nota<input data-pk="nota" value="${esc(p.nota||'')}"></label><input type="hidden" data-pk="id" value="${esc(p.id)}"></div>`;
+  $('#frm').oninput=null; $('#frm').onchange=null;
+  $('#frm').innerHTML=`<h3>Plazos del año</h3><p class="mut">Borra el nombre para quitar uno.</p><div id="plL">${L.map(f).join('')}</div><button type="button" class="btn sec sm" id="plMas">+ Otro plazo (IBI, cuota…)</button>
+    <div class="row acciones" style="justify-content:space-between"><button type="button" class="btn sec sm" id="plDef">Volver a los de serie</button><div class="row"><button type="button" class="btn sec" id="fCancel">Cancelar</button><button class="btn" id="fOk">Guardar</button></div></div>`;
+  let n=L.length; $('#plMas').onclick=()=>$('#plL').insertAdjacentHTML('beforeend',f({id:'p'+Date.now(),nombre:'',ini:'01-01',fin:'01-31'},n++));
+  $('#fCancel').onclick=()=>$('#dlg').close(); $('#plDef').onclick=async()=>{ delete AJ.plazos; $('#dlg').close(); await guardarAjustes(); render(); };
+  const mmdd=v=>{ const m=String(v).match(/(\d{1,2})\D+(\d{1,2})/); return m?`${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`:null; };
+  $('#frm').onsubmit=async e=>{ e.preventDefault();
+    AJ.plazos=[...document.querySelectorAll('[data-pl]')].map(el=>{ const g=k=>el.querySelector(`[data-pk=${k}]`).value.trim(); return {id:g('id'),nombre:g('nombre'),ini:mmdd(g('ini')),fin:mmdd(g('fin')),nota:g('nota')}; }).filter(p=>p.nombre&&p.ini&&p.fin);
+    $('#dlg').close(); await guardarAjustes(); render(); };
+  $('#dlg').showModal();
+}
+
+// ===== Avisos extra =====
+function avisosExtra(h){
+  const out=[], y=+h.slice(0,4);
+  D.reuniones.filter(r=>!r.hecha&&r.fecha>=h&&difDias(h,r.fecha)<=Math.max(AJ.umb.aviso_dias,3)).forEach(r=>{ const d=difDias(h,r.fecha);
+    out.push({c:d===0?'bad':'',t:`${d===0?'Hoy':d===1?'Mañana':'En '+d+' días'}${r.hora?' a las '+esc(r.hora):''}: <b>${esc(r.titulo)}</b>${r.lugar?' · '+esc(r.lugar):''}`,ord:d-0.5,fn:`abrir('reuniones',D.reuniones.find(x=>x.id==='${r.id}'))`}); });
+  plazos().forEach(p=>{ const {ini,fin}=plazoAnio(p,y); if(plazoHecho(p,y)||h>fin) return; const di=difDias(h,ini), df=difDias(h,fin);
+    if(h>=ini&&df<=15) out.push({c:'bad',t:`Cierra en ${df} días: <b>${esc(p.nombre)}</b> (${fFecha(fin)})`,ord:df,fn:"SUB.cuentas='papeles';ir('cuentas')"});
+    else if(di>=-7&&di<=7) out.push({c:'',t:`${di>0?'Se abre en '+di+' días':'Abierto'}: <b>${esc(p.nombre)}</b> hasta el ${fFecha(fin)}`,ord:20,fn:"SUB.cuentas='papeles';ir('cuentas')"}); });
+  D.almacen.filter(a=>a.activo!==false&&a.caduca).forEach(a=>{ const d=difDias(h,a.caduca); if(d<=30) out.push({c:d<0?'bad':'',t:`${d<0?'Caducado':'Caduca el '+fFecha(a.caduca)}: <b>${esc(a.nombre)}</b> (almacén)`,ord:30+d/100,fn:`SUB.campo='almacen';ir('campo')`}); });
+  const env=envasesPendientes(); const desde=AJ.sigfito_ult||D.tratamientos.map(t=>t.fecha).sort()[0];
+  if(env>=3&&desde&&difDias(desde,h)>=180) out.push({c:'',t:`Lleva los envases vacíos al punto SIGFITO (${env} productos aplicados desde ${AJ.sigfito_ult?'la última vez':'que apuntas'})`,ord:45,fn:`SUB.campo='almacen';ir('campo')`});
+  if(!AJ.ult_copia||difDias(AJ.ult_copia,h)>=30) out.push({c:'',t:`${AJ.ult_copia?'Hace más de un mes de tu última copia':'Aún no has hecho ninguna copia'} de seguridad: <b>descárgala</b>`,ord:60,fn:'abrirCopia()'});
+  return out;
+}
+
+// ===== Copia de seguridad =====
+const ORDEN_RESTAURAR=['comunidades','fincas','recintos','empresas','trabajadores','maquinas','facturas','factura_lineas','aplicaciones','tratamientos','gastos','ingresos','tareas','jornales','servicios','dias_perdidos','riego_pagos','labores','consejos','pesadas','notas','reuniones','almacen'];
+function abrirCopia(){
+  $('#frm').oninput=null; $('#frm').onchange=null; $('#frm').onsubmit=e=>e.preventDefault();
+  const n=Object.values(D).reduce((a,l)=>a+l.length,0);
+  $('#frm').innerHTML=`<h3>Copia de seguridad</h3><p>Tienes <b>${num(n)}</b> apuntes. ${AJ.ult_copia?`Última copia: ${fFecha(AJ.ult_copia)}.`:'Aún no has hecho ninguna.'}</p>
+    <p class="mut">Guarda el archivo en Google Drive o mándatelo por correo: si se queda solo en el móvil y lo pierdes, no sirve.</p>
+    <div class="row"><button type="button" class="btn" onclick="copia()">Descargar copia (para restaurar)</button><button type="button" class="btn sec" id="cpX">Todo en Excel (para mirar)</button></div>
+    <hr><b>Restaurar una copia</b><p class="mut">Vuelve a subir lo que haya en el archivo. No borra nada: lo que ya está se deja como en la copia y lo que falte se añade.</p>
+    <input type="file" id="cpF" accept=".json,application/json">
+    <div class="row acciones" style="justify-content:flex-end"><button type="button" class="btn sec" onclick="$('#dlg').close()">Cerrar</button></div>`;
+  $('#cpX').onclick=excelTodo; $('#cpF').onchange=e=>restaurar(e.target.files[0]);
+  if(!$('#dlg').open) $('#dlg').showModal();
+}
+async function excelTodo(){ try{ await cargarXLSX(); }catch(e){ toast(e.message); return; }
+  const wb=XLSX.utils.book_new(); Object.entries(D).forEach(([k,l])=>{ if(!l.length) return; const cols=[...new Set(l.flatMap(r=>Object.keys(r)))].filter(c=>c!=='user_id'); hojaXLSX(wb,k,[cols,...l.map(r=>cols.map(c=>r[c]==null?'':typeof r[c]==='object'?JSON.stringify(r[c]):r[c]))]); });
+  XLSX.writeFile(wb,`Olivas_todo_${hoy()}.xlsx`); AJ.ult_copia=hoy(); guardarAjustes(); }
+async function restaurar(file){
+  if(!file) return; let c; try{ c=JSON.parse(await file.text()); }catch(e){ toast('Ese archivo no es una copia de Olivas'); return; }
+  if(!c||!c.datos){ toast('Ese archivo no es una copia de Olivas'); return; }
+  const n=Object.values(c.datos).reduce((a,l)=>a+(l||[]).length,0);
+  if(!confirm(`Copia del ${String(c.fecha||'').slice(0,10)} con ${n} apuntes. ¿Restaurar?`)) return;
+  const {data:{user}}=await sb.auth.getUser(); let ok=0, mal=[];
+  for(const k of ORDEN_RESTAURAR){ const l=(c.datos[k]||[]).map(r=>({...r,user_id:user.id})); for(let i=0;i<l.length;i+=500){ const {error}=await sb.from('olv_'+k).upsert(l.slice(i,i+500)); if(error){ mal.push(k); break; } ok+=Math.min(500,l.length-i); } }
+  if(c.ajustes){ AJ={...AJ,...c.ajustes}; await guardarAjustes(); }
+  await cargarTodo(); $('#dlg').close(); render(); toast(mal.length?`Restaurados ${ok}; fallaron: ${mal.join(', ')}`:`Copia restaurada: ${ok} apuntes`);
+}
+
+// ===== Jornadas por trabajador (Seguridad Social) =====
+function abrirJornadasSS(mes){
+  const h=hoy(); mes=mes||h.slice(0,7); const ms=[0,1,2,3].map(i=>{ const d=new Date(+h.slice(0,4),+h.slice(5,7)-1-i,1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; });
+  const js=D.jornales.filter(j=>!j.empresa_id&&j.fecha.startsWith(mes)&&j.tarea!=='Día perdido');
+  const por={}; js.forEach(j=>{ const x=por[j.trabajador_id]=por[j.trabajador_id]||{dias:new Set(),h:0}; x.dias.add(j.fecha); x.h+=Number(j.horas)||0; });
+  const filas=Object.entries(por).map(([id,x])=>({nom:trabNom(id),t:D.trabajadores.find(t=>t.id===id)||{},dias:[...x.dias].sort(),h:x.h})).sort((a,b)=>a.nom.localeCompare(b.nom));
+  $('#frm').oninput=null; $('#frm').onchange=null; $('#frm').onsubmit=e=>e.preventDefault();
+  $('#frm').innerHTML=`<h3>Jornadas por trabajador</h3><div class="chips">${ms.map(m=>`<button type="button" class="chip ${m===mes?'on':''}" onclick="abrirJornadasSS('${m}')">${MESES[+m.slice(5)]} ${m.slice(0,4)}</button>`).join('')}</div>
+    ${filas.length?`<table><tr><th>Trabajador</th><th class="n">Días</th><th>Qué días</th></tr>${filas.map(f=>`<tr><td>${esc(f.nom)}${f.t.nif?`<div class="mut">${esc(f.t.nif)}</div>`:''}</td><td class="n">${f.dias.length}<div class="mut">${num(f.h,1)} h</div></td><td>${f.dias.map(d=>+d.slice(8)).join(', ')}</td></tr>`).join('')}</table>`:'<p class="mut">Nadie tuyo trabajó ese mes (los de empresas los declara la empresa).</p>'}
+    <p class="mut">Solo tus trabajadores (no los de empresas de servicios). Para pasarle al gestor las jornadas reales del mes.</p>
+    <div class="row acciones" style="justify-content:flex-end">${filas.length?`<button type="button" class="btn sec" id="ssC">Enviar</button>`:''}<button type="button" class="btn" onclick="$('#dlg').close()">Cerrar</button></div>`;
+  if($('#ssC')) $('#ssC').onclick=()=>compartir(`Jornadas ${MESES[+mes.slice(5)]} ${mes.slice(0,4)}\n`+filas.map(f=>`${f.nom}${f.t.nif?' ('+f.t.nif+')':''}: ${f.dias.length} días (${f.dias.map(d=>+d.slice(8)).join(', ')})`).join('\n'));
+  if(!$('#dlg').open) $('#dlg').showModal();
+}
+
+// ===== Comparar campañas por finca =====
+function htmlCompararCampanas(){
+  const camps=[...new Set([...D.pesadas.map(p=>campDe(p.fecha)),...D.ingresos.map(i=>i.campana)])].filter(Boolean).sort().reverse().slice(0,6);
+  if(camps.length<1) return '';
+  const fs=D.fincas.filter(f=>f.activa), sel=SUB.cmpF||'';
+  const filas=camps.map(c=>{ const C=calcular(c), K=cosecha(c);
+    if(!sel){ const kg=K.tot||C.kilos, ol=C.totOl; return {c,kg,kgol:ol&&kg?kg/ol:null,rend:K.rend,g:C.totG,res:C.totI-C.totG}; }
+    const r=C.R[sel]; if(!r) return null; const f=r.f, kg=K.porF[sel]?.kilos||r.kilos||0, x=K.porF[sel];
+    return {c,kg,kgol:f.olivos&&kg?kg/f.olivos:null,rend:x&&x.kconr?x.kr/x.kconr:null,g:r.directo+r.comun,res:r.ingD+r.ingC-r.directo-r.comun}; }).filter(Boolean);
+  return `<div class="card"><h2>Campañas comparadas</h2><div class="chips"><button class="chip ${!sel?'on':''}" onclick="SUB.cmpF='';render()">Todas</button>${fs.map(f=>`<button class="chip ${sel===f.id?'on':''}" onclick="SUB.cmpF='${f.id}';render()">${esc(f.nombre)}</button>`).join('')}</div>
+  <div class="scroll"><table><tr><th>Campaña</th><th class="n">Kilos</th><th class="n">Kg/olivo</th><th class="n">Rend.</th><th class="n">Gastos</th><th class="n">€/kg de coste</th><th class="n">Te deja</th></tr>
+  ${filas.map(r=>`<tr><td>${esc(r.c)}</td><td class="n">${num(r.kg)}</td><td class="n">${r.kgol?num(r.kgol,1):'—'}</td><td class="n">${r.rend?num(r.rend,1)+' %':'—'}</td><td class="n">${eur(r.g)}</td><td class="n">${r.kg?num(r.g/r.kg,3):'—'}</td><td class="n ${r.res<0?'neg':'pos'}">${eur(r.res)}</td></tr>`).join('')}</table></div>
+  <p class="mut">Los gastos comunes se reparten por nº de olivos. «Te deja» = cobros menos gastos de esa campaña.</p></div>`;
+}
+
+// ===== Datos de fuera: gasolineras, lluvia real (SUREMET) y plazos =====
+function km(a,b,c,d){ const R=6371, r=x=>x*Math.PI/180, dl=r(c-a), dn=r(d-b); const h=Math.sin(dl/2)**2+Math.cos(r(a))*Math.cos(r(c))*Math.sin(dn/2)**2; return 2*R*Math.asin(Math.sqrt(h)); }
+function centroFincas(){ const f=D.fincas.filter(x=>x.activa&&x.lat!=null&&x.lon!=null); if(!f.length) return {lat:38.175,lon:-3.0}; return {lat:f.reduce((a,x)=>a+Number(x.lat),0)/f.length, lon:f.reduce((a,x)=>a+Number(x.lon),0)/f.length}; }
+let GAS=null;
+async function cargarGasolineras(){
+  if(GAS&&Date.now()-GAS.t<30*60e3) return GAS.l;
+  const {data,error}=await sb.from('olv_gasolineras').select('*'); if(error||!data) return GAS?GAS.l:[];
+  const c=centroFincas(); data.forEach(g=>g.km=g.lat!=null?km(c.lat,c.lon,g.lat,g.lon):999); data.sort((a,b)=>a.km-b.km);
+  GAS={t:Date.now(),l:data}; return data;
+}
+async function gasolineraFav(){ const l=await cargarGasolineras(); if(!l.length) return null;
+  return l.find(g=>g.id===AJ.gasolinera) || l.find(g=>/jaencoop/i.test(g.rotulo||'')&&g.km<25&&g.gasoleo_b) || l.find(g=>g.gasoleo_b) || l[0]; }
+async function pintarCarburantes(){
+  const box=$('#carbBox'); if(!box) return; const l=await cargarGasolineras(); if(!$('#carbBox')) return;
+  if(!l.length){ box.innerHTML=''; return; }
+  const fav=await gasolineraFav(), cerca=l.filter(g=>g.km<=(SUB.carbKm||15)).slice(0,12);
+  const minB=Math.min(...cerca.map(g=>g.gasoleo_b||99)), minA=Math.min(...cerca.map(g=>g.gasoleo_a||99)), min95=Math.min(...cerca.map(g=>g.gasolina95||99));
+  const c=(v,m)=>v?`<span class="${v===m?'pos':''}">${num(v,3)}</span>`:'<span class="mut">—</span>';
+  box.innerHTML=`<div class="card"><h2>Gasoil y gasolina hoy</h2>
+    ${fav?`<div class="kpis"><div class="kpi"><span>Gasóleo B · ${esc(fav.rotulo)}</span><b>${fav.gasoleo_b?num(fav.gasoleo_b,3)+' €':'—'}</b></div><div class="kpi"><span>Gasóleo A</span><b>${fav.gasoleo_a?num(fav.gasoleo_a,3)+' €':'—'}</b></div><div class="kpi"><span>Gasolina 95</span><b>${fav.gasolina95?num(fav.gasolina95,3)+' €':'—'}</b></div></div>`:''}
+    <div class="scroll"><table><tr><th>Gasolinera</th><th class="n">B</th><th class="n">A</th><th class="n">95</th></tr>
+    ${cerca.map(g=>`<tr class="click" onclick="AJ.gasolinera='${g.id}';guardarAjustes(true);pintarCarburantes()"><td>${g.id===fav?.id?'★ ':''}<b>${esc(g.rotulo||'')}</b><div class="mut">${esc(g.localidad||g.municipio||'')} · ${num(g.km,1)} km · ${esc(g.direccion||'')}</div></td><td class="n">${c(g.gasoleo_b,minB)}</td><td class="n">${c(g.gasoleo_a,minA)}</td><td class="n">${c(g.gasolina95,min95)}</td></tr>`).join('')}</table></div>
+    <div class="chips" style="margin-top:8px">${[10,15,30].map(k=>`<button class="chip ${(SUB.carbKm||15)===k?'on':''}" onclick="SUB.carbKm=${k};pintarCarburantes()">${k} km</button>`).join('')}</div>
+    <p class="mut">Precios oficiales del Ministerio (${esc(l[0].fecha_precios||'')}), se actualizan 4 veces al día. En verde, el más barato de la lista. Toca una para marcarla como la tuya (★): se usa para calcular los litros de los gastos de gasoil.</p></div>`;
+}
+let EST=null; const LLU={};
+async function lluviaReal(f, codigo){
+  if(!EST){ const {data}=await sb.from('olv_estaciones').select('*'); EST=data||[]; }
+  if(!EST.length||f.lat==null) return null;
+  const cer=EST.filter(e=>e.lat!=null).map(e=>({...e,km:km(Number(f.lat),Number(f.lon),e.lat,e.lon)})).filter(e=>e.km<=20).sort((a,b)=>a.km-b.km);
+  if(!cer.length) return null;
+  const h=hoy(), sep=`${parseInt(campDe(h))}-09-01`, desde=[sep,addDias(h,-30)].sort()[0];
+  const cods=cer.slice(0,4).map(e=>e.codigo), clave=cods.join(',')+desde;
+  if(!LLU[clave]||Date.now()-LLU[clave].t>20*60e3){ const {data}=await sb.from('olv_lluvia').select('*').in('codigo',cods).gte('fecha',desde); LLU[clave]={t:Date.now(),l:data||[]}; }
+  const filas=LLU[clave].l, conDatos=cer.slice(0,4).filter(e=>filas.some(r=>r.codigo===e.codigo&&r.fecha>=addDias(h,-1)));
+  const est=cer.find(e=>e.codigo===codigo&&conDatos.includes(e)) || conDatos.find(e=>e.codigo===f.estacion_lluvia) || conDatos[0]; if(!est) return null;
+  const mias=filas.filter(r=>r.codigo===est.codigo).sort((a,b)=>a.fecha.localeCompare(b.fecha)); const suma=d=>Math.round(mias.filter(r=>r.fecha>=d).reduce((a,r)=>a+Number(r.prec||0),0)*10)/10;
+  return {est, km:est.km, otras:conDatos.filter(e=>e!==est), hoy:suma(h), d7:suma(addDias(h,-6)), d30:suma(addDias(h,-29)), camp:suma(sep), desde:mias[0]?.fecha, dias:mias.slice(-10).reverse(), sep};
+}
+async function pintarLluvia(f, codigo){
+  const box=$('#lluviaBox'); if(!box) return; let L; try{ L=await lluviaReal(f,codigo); }catch(e){ return; } if(!$('#lluviaBox')||SUB.tiempo!==f.id) return;
+  if(!L){ box.innerHTML=''; return; }
+  const parcial=L.desde>L.sep;
+  box.innerHTML=`<div class="card"><h2>Lluvia de verdad · ${esc(f.nombre)}</h2>
+    <p class="mut">Estación <b>${esc(L.est.descripcion||L.est.municipio)}</b> (${esc(L.est.municipio||'')}) a ${num(L.km,1)} km · red SUREMET</p>
+    <div class="kpis"><div class="kpi"><span>Hoy</span><b>${num(L.hoy,1)} mm</b></div><div class="kpi"><span>7 días</span><b>${num(L.d7,1)} mm</b></div><div class="kpi"><span>30 días</span><b>${num(L.d30,1)} mm</b></div><div class="kpi"><span>Desde el 1 de sept.</span><b>${num(L.camp,1)} mm</b></div></div>
+    ${L.dias.some(r=>Number(r.prec)>0)?`<table>${L.dias.filter(r=>Number(r.prec)>0).map(r=>`<tr><td>${fFecha(r.fecha)}</td><td class="n">${num(r.prec,1)} mm</td><td class="n mut">${r.tmin!=null?num(r.tmin)+'–'+num(r.tmax)+'°':''}</td></tr>`).join('')}</table>`:''}
+    ${L.otras.length?`<div class="chips" style="margin-top:8px">${L.otras.map(e=>`<button class="chip" onclick="pintarLluvia(D.fincas.find(x=>x.id==='${f.id}'),'${e.codigo}')">${esc(e.descripcion||e.municipio)} · ${num(e.km,1)} km</button>`).join('')}</div>`:''}
+    <p class="mut">${parcial?`Se recoge desde el ${fFecha(L.desde)}: los totales irán siendo completos con el tiempo. `:''}Datos de estaciones de aficionados de <a href="https://suremet.es/estacion.php?id=${esc(L.est.codigo)}" target="_blank" rel="noopener">SUREMET</a>, leídos cada hora.</p></div>`;
+}
+let PLAZOS_MIRADO=false;
+async function comprobarPlazos(forzar){
+  const y=+hoy().slice(0,4); PLAZOS_MIRADO=true;
+  if(forzar) toast('Buscando las fechas en internet… (tarda un poco)');
+  try{ const {data,error}=await sb.functions.invoke('olivas-datos',{body:{accion:'plazos',anio:y,forzar:!!forzar}});
+    if(error||!data||data.error) throw new Error(data?.error||error?.message||'sin respuesta');
+    AJ.plazos_web={anio:data.anio||y, fecha:data.cache||new Date().toISOString(), ia:data.ia, items:data.plazos||[]};
+    await guardarAjustes(true); if(VIEW==='cuentas'||VIEW==='inicio') render(); if(forzar) toast('Fechas actualizadas');
+  }catch(e){ if(forzar) toast('No se pudieron comprobar: '+e.message); }
+}
+function plazosAlDia(){ if(PLAZOS_MIRADO||!navigator.onLine) return; const w=AJ.plazos_web, y=+hoy().slice(0,4);
+  if(!w||w.anio!==y||difDias(String(w.fecha).slice(0,10),hoy())>=7) comprobarPlazos(false); else PLAZOS_MIRADO=true; }
 
 // ===== Exportar =====
 function bajar(nombre, contenido, tipo){ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([contenido],{type:tipo})); a.download=nombre; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1000); }
@@ -2235,12 +2558,15 @@ function nuevaLabor(){
   $('#dlg').showModal(); setTimeout(()=>$('#frm [name=nombre]').focus(),50);
 }
 async function borrarLabor(id){ AJ.labores_propias=(AJ.labores_propias||[]).filter(x=>x.id!==id); await guardarAjustes(); render(); }
-function copia(){ bajar(`olivas_copia_${hoy()}.json`, JSON.stringify({version:1, fecha:new Date().toISOString(), ajustes:AJ, datos:D}, null, 1), 'application/json'); }
+function copia(){ AJ.ult_copia=hoy(); bajar(`olivas_copia_${hoy()}.json`, JSON.stringify({version:1, fecha:new Date().toISOString(), ajustes:AJ, datos:D}, null, 1), 'application/json'); guardarAjustes(); }
 function ics(){
   const ev=[]; const f=s=>s.replace(/-/g,''); const e=s=>String(s).replace(/[\\;,]/g,m=>'\\'+m).replace(/\n/g,'\\n');
   const add=(uid,fecha,tit,alarmDias)=>ev.push(`BEGIN:VEVENT\r\nUID:${uid}@olivas\r\nDTSTAMP:${new Date().toISOString().replace(/[-:]/g,'').slice(0,15)}Z\r\nDTSTART;VALUE=DATE:${f(fecha)}\r\nDTEND;VALUE=DATE:${f(addDias(fecha,1))}\r\nSUMMARY:${e(tit)}\r\nBEGIN:VALARM\r\nACTION:DISPLAY\r\nDESCRIPTION:${e(tit)}\r\nTRIGGER:-P${alarmDias-1}DT15H\r\nEND:VALARM\r\nEND:VEVENT`);
   D.tareas.filter(t=>!t.hecha&&t.fecha>=hoy()).forEach(t=>add('t'+t.id,t.fecha,`Olivas: ${t.titulo}${t.finca_id?' ('+fincaNom(t.finca_id)+')':''}`,1));
   D.maquinas.filter(m=>m.activa).forEach(m=>{ if(m.itv_proxima>=hoy()) add('i'+m.id,m.itv_proxima,`ITV ${m.nombre}`,14); if(m.seguro_vence>=hoy()) add('s'+m.id,m.seguro_vence,`Seguro ${m.nombre}`,14); });
+  D.reuniones.filter(r=>!r.hecha&&r.fecha>=hoy()).forEach(r=>add('r'+r.id,r.fecha,`${r.hora?r.hora+' ':''}${r.titulo}${r.lugar?' · '+r.lugar:''}`,1));
+  const y=+hoy().slice(0,4); plazos().forEach(p=>{ [y,y+1].forEach(a=>{ const {ini,fin}=plazoAnio(p,a); if(fin>=hoy()&&!plazoHecho(p,a)){ if(ini>=hoy()) add('pi'+p.id+a,ini,`Se abre: ${p.nombre}`,1); add('pf'+p.id+a,fin,`Último día: ${p.nombre}`,15); } }); });
+  carnes().forEach(c=>{ if(c.cad&&c.cad>=hoy()) add('c'+(c.id||'tit'),c.cad,`Caduca el carné de fitosanitarios de ${c.nombre}`,90); });
   if(!ev.length){ toast('No hay nada pendiente que exportar'); return; }
   bajar('olivas_avisos.ics',`BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Olivas//ES\r\n${ev.join('\r\n')}\r\nEND:VCALENDAR\r\n`,'text/calendar');
 }
