@@ -31,6 +31,8 @@ nav button.on{color:var(--olv);font-weight:700;box-shadow:inset 0 3px 0 var(--ol
 .kpi{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
 .kpi b{display:block;font-size:20px}
 .kpi span{color:var(--mut);font-size:12px}
+.crono{position:sticky;top:0;z-index:5;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;background:var(--olv);color:#fff;border-radius:12px;padding:8px 12px;margin-bottom:10px}
+.crono .btn.sec{background:rgba(255,255,255,.15);color:#fff;border-color:rgba(255,255,255,.4)}.crono .btn:not(.sec){background:#fff;color:var(--olv)}
 .wid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:12px}
 @media(min-width:900px){.wid{grid-template-columns:repeat(6,1fr)}}
 .wg.ancho{grid-column:span 2}
@@ -169,7 +171,7 @@ details.adv{margin:4px 0 10px}details.adv summary{cursor:pointer;color:var(--olv
 
 <script>
 // ===== Configuración =====
-const VERSION = '2.9';
+const VERSION = '3.1';
 const VERSION_FECHA = '8 oct 2026';
 const CREDITOS = `Olivas v${VERSION} (${VERSION_FECHA}) · © 2026 Alfonso Carrascosa Martínez · Hecha con Claude (Anthropic)`;
 const SUPA_URL = 'https://kseyndjbmkaflpoqitsj.supabase.co';
@@ -192,7 +194,7 @@ const UMB_DEF = {
   spray_vmin:2, spray_vmax:10, spray_rmax:20, spray_tmin:5, spray_tmax:28, spray_hrmin:40, spray_pmax:30, spray_horas_lluvia:4, spray_min_horas:3,
   work_tmax:35, work_rmax:50, work_lluvia:1,
   ace_lluvia_ayer:5, ace_lluvia_ayer_max:15,
-  aviso_dias:7, itv_dias:30,
+  aviso_dias:7, itv_dias:30, almuerzo_min:30,
   moj_hr:93, moj_dif:1.5, seco_horas:2, seco_horas_lluvia:3, ace_verde_hora:9.5, ace_ambar_hora:13
 };
 
@@ -793,7 +795,7 @@ function grupos(trab,todas=false){ // [{id, nombre, trab:[]}] propios primero
   D.empresas.filter(e=>todas||e.activa).forEach(e=>{ const l=trab.filter(t=>t.empresa_id===e.id); if(l.length) g.push({id:e.id,nombre:e.nombre+(e.activa?'':' (baja)'),trab:l,e}); });
   return g.filter(x=>x.trab.length);
 }
-function abrirParte(){
+function abrirParte(pre){ pre=pre||{};
   const trab=D.trabajadores.filter(t=>t.activo);
   if(!trab.length){ toast('Primero añade a los trabajadores'); SUB.jornales='trab'; ir('jornales'); setTimeout(()=>abrir('trabajadores'),0); return; }
   const sel=new Set((ULT.j_trab||[]).filter(id=>trab.find(t=>t.id===id)));
@@ -805,11 +807,12 @@ function abrirParte(){
     ${G.map(g=>`<span class="clab">${G.length>1?esc(g.nombre)+(g.e?` · ${FORMAS[g.e.forma_cobro]}`:''):'¿Quién ha venido?'}</span>
       <div class="chips pTrab" data-g="${g.id}">${g.trab.map(t=>`<button type="button" class="chip ${sel.has(t.id)?'on':''}" data-id="${t.id}">${esc(t.nombre)}</button>`).join('')}<button type="button" class="chip pTodos">Todos</button></div>
       ${g.e&&g.e.forma_cobro==='kilo'?`<label class="hidden" id="kgL_${g.id}">Kilos recogidos por ${esc(g.nombre)} (si ya los sabes)<input name="kg_${g.id}" inputmode="decimal"></label>`:''}`).join('')}
-    <span class="clab">Horas</span>${chips('modo',[['J','Jornada'],['M','Media'],['H','Otras…']],ULT.j_modo||'J')}
-    <label id="pHorasL" class="${(ULT.j_modo||'J')==='H'?'':'hidden'}">Horas de cada uno<input name="horas" inputmode="decimal" value="${esc(ULT.j_horas||'')}"></label>
+    ${pre.horas!=null?`<div class="aviso ok" style="margin:6px 0">⏱ Cronómetro: <b>${num(pre.horas,2)} h</b> de trabajo${pre.nota?`<div class="mut">${esc(pre.nota)}</div>`:''}</div>`:''}
+    <span class="clab">Horas</span>${chips('modo',[['J','Jornada'],['M','Media'],['H','Otras…']],pre.horas!=null?'H':(ULT.j_modo||'J'))}
+    <label id="pHorasL" class="${(pre.horas!=null||(ULT.j_modo||'J')==='H')?'':'hidden'}">Horas de cada uno<input name="horas" inputmode="decimal" value="${esc(pre.horas!=null?String(pre.horas).replace('.',','):(ULT.j_horas||''))}"></label>
     <span class="clab">Finca</span>${chips('finca_id',opsFincas(),fincaDef)}
     <span class="clab">Faena</span>${chips('tarea',JOR_TAREAS.map(x=>[x,x]),tareaDef)}
-    <label>Día<input type="date" name="fecha" value="${hoy()}"></label>
+    <label>Día<input type="date" name="fecha" value="${pre.fecha||hoy()}"></label>
     <div class="chips" style="margin-top:-6px"><button type="button" class="chip" data-qf="fecha" data-n="0">Hoy</button><button type="button" class="chip" data-qf="fecha" data-n="-1">Ayer</button></div>
     ${htmlViajeCampo('pViaje')}
     <p id="pRes" class="mut"></p>
@@ -845,7 +848,7 @@ function abrirParte(){
     if(r.ok && serv.length){ r=await insertar('servicios',serv); offline=offline||r.offline; }
     if(!r.ok){ $('#fOk').disabled=false; toast('Error: '+r.error.message); return; }
     let vjTxt=''; if(VJ){ recordar('viaje_on',VJ.on()); if(VJ.on()&&finca){ recordar('viaje_veh',VJ.vehs()); let t=0; for(const v of VJ.vehs()){ const c=await apuntarViaje(finca,fecha,v,'Trabajo: '+(F.tarea.value||'')); if(c&&c.coste!=null) t+=c.coste; } if(t) vjTxt=` · viaje ${eur(t)}`; } }
-    recordar('j_trab',ids); recordar('j_finca',F.finca_id.value); recordar('j_tarea',F.tarea.value); recordar('j_modo',F.modo.value); recordar('j_horas',F.horas.value);
+    recordar('j_trab',ids); recordar('j_finca',F.finca_id.value); recordar('j_tarea',F.tarea.value); if(pre.horas==null){ recordar('j_modo',F.modo.value); recordar('j_horas',F.horas.value); }
     $('#dlg').close(); if(!offline) await Promise.all([cargar('jornales'),cargar('servicios'),cargar('viajes')]); pintarCampanas(); render();
     toast(`${filas.length} ${filas.length===1?'jornada guardada':'jornadas guardadas'} · ${eur(filas.reduce((s,f)=>s+f.importe,0)+serv.reduce((s,f)=>s+f.importe,0))}${vjTxt}${offline?' en el móvil':''}`);
   };
@@ -1798,6 +1801,7 @@ const MAPA=[
   ['Escanear tickets de entrega (pesadas)','Cuentas → Cosecha, o el botón +',"escanearTickets()"],
   ['Mis almazaras (puntos de entrega guardados)','Cuentas → Cosecha → «Mis almazaras»',"editarAlmazaras()"],
   ['Lo que cuesta ir a las fincas (km, consumo, gasoil)','Más → Ajustes → Viajes a las fincas',"SUB.mas='ajustes';ir('mas')"],
+  ['Cronómetro de la jornada (con almuerzo)','Inicio → «Empezar la jornada»',"ir('inicio')"],
   ['DAT para llevar la aceituna a la almazara','Cuentas → Cosecha → «DAT para la almazara»',"abrirDAT()"],
   ['Cuaderno de campo (modelo Junta)','Campo → Curaciones → «Cuaderno de campo»',"abrirCuaderno()"],
   ['Cubas estándar (tus mezclas de siempre)','Campo → Curaciones, al final',"SUB.campo='trat';ir('campo')"],
@@ -1986,7 +1990,7 @@ function fab(k){ const f=$('#fab'); if(!k){f.classList.add('hidden');return;} f.
 
 function render(){
   const V={inicio:vInicio,cuentas:vCuentas,jornales:vJornales,campo:vCampo,tiempo:vTiempo,mas:vMas,ficha:vFicha}[VIEW];
-  $('#view').innerHTML = V();
+  $('#view').innerHTML = V(); pintarCrono();
   const post={tiempo:postTiempo,mas:postMas,cuentas:postPrecios,inicio:postInicio,campo:postCalc,ficha:postFicha}[VIEW]; if(post) post(); postLabores();
   document.querySelectorAll('[data-ed]').forEach(el=>el.onclick=e=>{ if(e.target.closest('[data-hecha]')) return; const [k,id]=el.dataset.ed.split(':'); abrir(k, D[k].find(x=>x.id===id)); });
   document.querySelectorAll('[data-hecha]').forEach(el=>el.onclick=e=>{ e.stopPropagation(); marcarHecha(el.dataset.hecha); });
@@ -2004,6 +2008,7 @@ function vInicio(){
   const filas=C.fincas.map(f=>{ const r=C.R[f.id]; const g=r.directo+r.comun, i=r.ingD+r.ingC, mg=i-g;
     return `<tr class="click" onclick="VOLVER='inicio';verFinca('${f.id}')"><td>${esc(f.nombre)}<div class="mut">${f.activa?`${num(f.olivos)} olivos · ${num(C.totOl?f.olivos/C.totOl*100:0,1)} %`:'inactiva'}</div></td><td class="n">${eur(g)}<div class="mut">${eur(r.directo)} propios<br>${eur(r.comun)} común</div></td><td class="n">${eur(i)}</td><td class="n ${mg>=0?'pos':'neg'}"><b>${eur(mg)}</b><div class="mut">${f.olivos?eur(g/f.olivos)+'/olivo':''}</div></td></tr>`; }).join('');
   return `
+  ${crono()?'':`<button class="btn sec" style="width:100%;margin-bottom:10px" onclick="empezarCrono()">⏱ Empezar la jornada (cronómetro)</button>`}
   <div class="quick"><button onclick="abrir('gastos')"><b>+</b>Gasto</button><button onclick="abrirParte()"><b>+</b>Jornada</button>${EN_COSECHA()?`<button onclick="abrir('pesadas')"><b>+</b>Pesada</button>`:`<button onclick="abrirAplicacion()"><b>+</b>Curación</button>`}<button onclick="escanear()"><b>+</b>Factura</button><button onclick="abrirApuntar()"><b>⋯</b>Más</button></div>
   ${resumenHoy()}
   ${htmlWidgets()}
@@ -2277,7 +2282,7 @@ function vMas(){
     <b>Trabajar en el campo</b><div class="grid2">${inp('work_tmax','Temp. máxima (°)')}${inp('work_rmax','Ráfagas máximas (km/h)')}${inp('work_lluvia','Lluvia máx. de 8 a 18 h (mm)')}</div>
     <b>Coger aceituna</b><div class="grid2">${inp('ace_lluvia_ayer','Lluvia del día antes para ámbar (mm)')}${inp('ace_lluvia_ayer_max','… para rojo (mm)')}${inp('ace_verde_hora','Verde si se seca antes de las (h)')}${inp('ace_ambar_hora','Rojo si se seca después de las (h)')}</div>
     <b>Oliva mojada</b><div class="grid2">${inp('moj_hr','Mojada con humedad desde (%)')}${inp('moj_dif','… o temperatura a menos de (°) del rocío')}${inp('seco_horas','Horas sin mojar para darla por seca')}${inp('seco_horas_lluvia','… si llovió en las 12 h antes')}</div>
-    <b>Avisos</b><div class="grid2">${inp('aviso_dias','Avisar tareas con (días)')}${inp('itv_dias','Avisar ITV/seguro con (días)')}</div>
+    <b>Avisos</b><div class="grid2">${inp('aviso_dias','Avisar tareas con (días)')}${inp('itv_dias','Avisar ITV/seguro con (días)')}${inp('almuerzo_min','Almuerzo del cronómetro «con almuerzo» (min)')}</div>
     <p class="mut">Valores orientativos: revisa siempre la etiqueta del producto, que manda sobre esto.</p>
   </div>
   ${htmlAjustesViajes()}
@@ -2936,6 +2941,35 @@ async function casaPorNombre(txt){
   if(!txt) return; try{ const r=await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=es&q=${encodeURIComponent(txt)}`,{headers:{'Accept-Language':'es'}}); const j=await r.json();
     if(!j[0]) { toast('No encuentro ese sitio'); return; } AJ.casa={lat:+j[0].lat,lon:+j[0].lon,nombre:txt}; await guardarAjustes(true); await calcularKmFincas(); }catch(e){ toast('No se pudo buscar (¿sin cobertura?)'); } }
 function casaGPS(){ if(!navigator.geolocation){ toast('Sin GPS'); return; } navigator.geolocation.getCurrentPosition(async p=>{ AJ.casa={lat:p.coords.latitude,lon:p.coords.longitude,nombre:'mi ubicación'}; await guardarAjustes(true); await calcularKmFincas(); },()=>toast('No se pudo obtener la ubicación')); }
+
+// ===== Cronómetro de la jornada =====
+function crono(){ try{ return JSON.parse(localStorage.getItem('olv_crono')||'null'); }catch(e){ return null; } }
+function guardarCrono(c){ try{ if(c) localStorage.setItem('olv_crono',JSON.stringify(c)); else localStorage.removeItem('olv_crono'); }catch(e){} pintarCrono(); }
+function msPausas(c,ahora=Date.now()){ return (c.pausas||[]).reduce((a,[x,y])=>a+(y-x),0)+(c.enPausa?ahora-c.enPausa:0); }
+function horasCrono(c,ahora=Date.now()){ const bruto=(ahora-c.ini)/36e5, pausa=msPausas(c,ahora)/36e5;
+  const alm=(AJ.umb.almuerzo_min??30)/60, autoAlm=c.almuerzo&&!(c.pausas||[]).length&&!c.enPausa?alm:0; // solo si es jornada «con almuerzo» y no has marcado la parada
+  return {bruto, pausa, autoAlm, neto:Math.max(0,bruto-pausa-autoAlm)}; }
+function fDur(h){ const m=Math.round(h*60); return `${Math.floor(m/60)} h ${String(m%60).padStart(2,'0')} min`; }
+function empezarCrono(){ guardarCrono({ini:Date.now(),pausas:[],enPausa:null,fecha:hoy(),almuerzo:ULT.crono_alm??false}); toast('Jornada en marcha'); render(); }
+function almCrono(v){ const c=crono(); if(!c) return; c.almuerzo=v; recordar('crono_alm',v); guardarCrono(c); }
+function pausaCrono(){ const c=crono(); if(!c) return; if(c.enPausa){ c.pausas.push([c.enPausa,Date.now()]); c.enPausa=null; toast('Seguimos'); } else { c.enPausa=Date.now(); toast('Parado: no cuenta hasta que pulses «Seguir»'); } guardarCrono(c); }
+function terminarCrono(){ const c=crono(); if(!c) return; if(c.enPausa){ c.pausas.push([c.enPausa,Date.now()]); c.enPausa=null; }
+  const H=horasCrono(c), horas=Math.round(H.neto*4)/4; // a cuartos de hora
+  guardarCrono(null);
+  abrirParte({horas, fecha:c.fecha, nota:`De ${new Date(c.ini).toTimeString().slice(0,5)} a ${new Date().toTimeString().slice(0,5)}${H.pausa?` · parado ${fDur(H.pausa)}`:''}${H.autoAlm?` · descontada ${Math.round(H.autoAlm*60)} min de almuerzo`:''}`});
+}
+function anularCrono(){ if(confirm('¿Borrar el cronómetro de hoy sin apuntar nada?')) { guardarCrono(null); render(); } }
+function pintarCrono(){
+  let bar=$('#cronoBar'); const c=crono();
+  if(!c){ if(bar) bar.remove(); return; }
+  if(!bar){ bar=document.createElement('div'); bar.id='cronoBar'; bar.className='crono'; $('#view').before(bar); }
+  const H=horasCrono(c);
+  const m=AJ.umb.almuerzo_min??30;
+  bar.innerHTML=`<span class="cr-t">${c.enPausa?'☕ Almuerzo':'⏱ Trabajando'} <b>${fDur(H.bruto-H.pausa)}</b>${c.fecha!==hoy()?' <span class="neg">(empezó otro día)</span>':''}
+    <span style="display:block;font-size:12px;opacity:.9">${(c.pausas||[]).length||c.enPausa?`Paradas: ${fDur(H.pausa)} (se descuentan)`:`<a href="#" style="color:#fff" onclick="event.preventDefault();almCrono(${!c.almuerzo})">${c.almuerzo?`Con almuerzo: se quitan ${m} min · cambiar a del tirón`:'Del tirón: no se quita nada · cambiar a con almuerzo'}</a>`}</span></span>
+    <span class="row" style="gap:6px;flex-wrap:nowrap"><button class="btn sec sm" onclick="pausaCrono()">${c.enPausa?'Seguir':'Parar'}</button><button class="btn sm" onclick="terminarCrono()">Terminar</button><button class="btn sec sm" title="Anular" onclick="anularCrono()">✕</button></span>`;
+}
+setInterval(()=>{ if(crono()) pintarCrono(); }, 30000);
 
 // ===== Exportar =====
 function bajar(nombre, contenido, tipo){ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([contenido],{type:tipo})); a.download=nombre; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1000); }
