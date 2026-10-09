@@ -171,7 +171,7 @@ details.adv{margin:4px 0 10px}details.adv summary{cursor:pointer;color:var(--olv
 
 <script>
 // ===== Configuración =====
-const VERSION = '3.1';
+const VERSION = '3.2';
 const VERSION_FECHA = '8 oct 2026';
 const CREDITOS = `Olivas v${VERSION} (${VERSION_FECHA}) · © 2026 Alfonso Carrascosa Martínez · Hecha con Claude (Anthropic)`;
 const SUPA_URL = 'https://kseyndjbmkaflpoqitsj.supabase.co';
@@ -199,7 +199,7 @@ const UMB_DEF = {
 };
 
 // ===== Estado =====
-let D = {fincas:[],maquinas:[],gastos:[],ingresos:[],tratamientos:[],tareas:[],trabajadores:[],jornales:[],empresas:[],servicios:[],facturas:[],factura_lineas:[],dias_perdidos:[],comunidades:[],riego_pagos:[],labores:[],consejos:[],aplicaciones:[],pesadas:[],notas:[],recintos:[],reuniones:[],almacen:[],viajes:[]};
+let D = {fincas:[],maquinas:[],gastos:[],ingresos:[],tratamientos:[],tareas:[],trabajadores:[],jornales:[],empresas:[],servicios:[],facturas:[],factura_lineas:[],dias_perdidos:[],comunidades:[],riego_pagos:[],labores:[],consejos:[],aplicaciones:[],pesadas:[],notas:[],recintos:[],reuniones:[],almacen:[],viajes:[],muestras:[]};
 const JOR_TAREAS = ['Recogida','Poda','Pestugar','Juntar ramas','Desbrozar','Soplar','Curar','Abonar','Día perdido','Otra'];
 let ULT = {}; try{ ULT = JSON.parse(localStorage.getItem('olv_ult')||'{}'); }catch(e){}
 function recordar(k,v){ ULT[k]=v; try{ localStorage.setItem('olv_ult',JSON.stringify(ULT)); }catch(e){} }
@@ -286,7 +286,7 @@ window.addEventListener('online', vaciarCola); setInterval(vaciarCola, 60000);
 function sinRed(error){ if(esRed(error)){ toast('Sin cobertura: para editar o borrar necesitas conexión'); return true; } return false; }
 
 async function cargar(k){
-  const ord = {fincas:'nombre',maquinas:'nombre',gastos:'fecha',ingresos:'fecha',tratamientos:'fecha',tareas:'fecha',trabajadores:'nombre',jornales:'fecha',empresas:'nombre',servicios:'fecha',facturas:'fecha',factura_lineas:'created_at',dias_perdidos:'fecha',comunidades:'nombre',riego_pagos:'fecha',labores:'fecha',consejos:'created_at',aplicaciones:'fecha',pesadas:'fecha',notas:'fecha',recintos:'parcela',reuniones:'fecha',almacen:'nombre',viajes:'fecha'}[k];
+  const ord = {fincas:'nombre',maquinas:'nombre',gastos:'fecha',ingresos:'fecha',tratamientos:'fecha',tareas:'fecha',trabajadores:'nombre',jornales:'fecha',empresas:'nombre',servicios:'fecha',facturas:'fecha',factura_lineas:'created_at',dias_perdidos:'fecha',comunidades:'nombre',riego_pagos:'fecha',labores:'fecha',consejos:'created_at',aplicaciones:'fecha',pesadas:'fecha',notas:'fecha',recintos:'parcela',reuniones:'fecha',almacen:'nombre',viajes:'fecha',muestras:'fecha'}[k];
   const asc = !['viajes','gastos','ingresos','tratamientos','jornales','servicios','facturas','dias_perdidos','riego_pagos','labores','consejos','aplicaciones','pesadas','notas'].includes(k);
   let todo=[], desde=0;
   for(;;){ // Supabase devuelve como mucho 1000 filas por consulta
@@ -770,7 +770,7 @@ function avisos(){
     else if(d<=u.itv_dias) out.push({c:d<=7?'bad':'',t:`Riego: <b>${esc(r.concepto)} ${esc(comNom(r.comunidad_id))}</b> ${eur(r.importe)} vence el ${fFecha(r.vencimiento)}`,ord:d,riego:1}); });
   { const [ini,fin]=campRango(CAMP); const liq=D.ingresos.some(i=>i.fecha>=ini&&i.fecha<=fin&&/Liquidaci/.test(i.tipo||'')); const pr=rentas().reduce((a,r)=>a+r.pend,0);
     if(liq&&pr>0) out.push({c:'',t:`Ya has cobrado liquidación: queda la renta de las fincas arrendadas, <b>${eur(pr)}</b>`,ord:49,go:'jornales'}); }
-  out.push(...avisosExtra(h));
+  out.push(...avisosExtra(h)); out.push(...avisosMuestras(h));
   const deb=Object.values(pendientes()).reduce((a,b)=>a+b,0);
   if(deb>0) out.push({c:'',t:`Debes <b>${eur(deb)}</b> a trabajadores${D.empresas.length?' y empresas':''}`,ord:50,go:'jornales'});
   return out.sort((a,b)=>a.ord-b.ord);
@@ -1281,6 +1281,8 @@ async function contextoTecnico(pregunta){
       compras_abonos_y_fitos:D.factura_lineas.filter(l=>['Abonos','Fitosanitarios'].includes(l.categoria)&&fact[l.factura_id]?.fecha>=hace(365)).map(l=>({fecha:fact[l.factura_id].fecha,producto:l.nombre_comun||l.producto,cantidad:l.cantidad,unidad:l.unidad})),
     },
     produccion_por_campana:Object.entries(prod).map(([c,x])=>({campana:c,kilos:Math.round(x.kilos),rendimiento_medio:x.kilos?Math.round(x.rend_x_kg/x.kilos*100)/100:null})),
+    muestras_ult_6_meses:D.muestras.filter(m=>m.fecha>=hace(180)).map(m=>({fecha:m.fecha,finca:fincaNom(m.finca_id),tipo:m.tipo,valor:m.valor,datos:m.datos})),
+    fincas_con_algodoncillo:D.fincas.filter(f=>f.algodoncillo).map(f=>f.nombre),
     pendientes_calendario:pendientesLabores().filter(g=>g.toca).map(g=>({labor:g.L.nombre,fincas:g.fincas.map(f=>f?f.nombre:'todas'),dias_que_quedan:g.resta})),
     consejo_anterior: D.consejos[0] ? {fecha:D.consejos[0].fecha, pregunta:D.consejos[0].pregunta, resumen:D.consejos[0].respuesta?.resumen, te_pregunto:D.consejos[0].respuesta?.preguntas} : null,
     pregunta:pregunta||null,
@@ -1589,7 +1591,7 @@ function postCalc(){
 const EN_COSECHA=()=>[10,11,12,1,2,3].includes(new Date().getMonth()+1);
 const APUNTAR=[
   ['Gasto','💶',"abrir('gastos')"],['Jornada','👷',"abrirParte()"],['Pesada','⚖️',"abrir('pesadas')"],['Curación','💧',"abrirAplicacion()"],
-  ['Factura','📄',"escanear()"],['Nota de campo','📝',"abrir('notas')"],['Tarea','✅',"abrir('tareas')"],['Cobro','💰',"abrir('ingresos')"],['Escanear liquidación','🧾',"escanearLiq()"],['Escanear tickets','🎫',"escanearTickets()"],
+  ['Factura','📄',"escanear()"],['Nota de campo','📝',"abrir('notas')"],['Tarea','✅',"abrir('tareas')"],['Cobro','💰',"abrir('ingresos')"],['Escanear liquidación','🧾',"escanearLiq()"],['Escanear tickets','🎫',"escanearTickets()"],['Índice de madurez','🫒',"abrirMadurez()"],['Análisis de rendimiento','🧪',"abrirRendimiento()"],['Aforo de cosecha','⚖️',"abrirAforo()"],
   ['Reunión o cita','📅',"abrir('reuniones')"],['Día perdido','🌧️',"abrir('dias_perdidos')"],['Recibo de riego','🚿',"abrir('riego_pagos')",'mas:riego'],['Producto al almacén','📦',"abrir('almacen')",'campo:almacen'],
 ];
 function abrirApuntar(fid){
@@ -1802,6 +1804,9 @@ const MAPA=[
   ['Mis almazaras (puntos de entrega guardados)','Cuentas → Cosecha → «Mis almazaras»',"editarAlmazaras()"],
   ['Lo que cuesta ir a las fincas (km, consumo, gasoil)','Más → Ajustes → Viajes a las fincas',"SUB.mas='ajustes';ir('mas')"],
   ['Cronómetro de la jornada (con almuerzo)','Inicio → «Empezar la jornada»',"ir('inicio')"],
+  ['Cuándo empezar a recoger: madurez y análisis de rendimiento','Campo → Muestras',"SUB.campo='muestras';ir('campo')"],
+  ['Cosecha esperada (aforo)','Campo → Muestras → Aforo',"abrirAforo()"],
+  ['Algodoncillo: muestreo y umbral','Campo → Muestras → Algodoncillo',"abrirAlgodoncillo()"],
   ['DAT para llevar la aceituna a la almazara','Cuentas → Cosecha → «DAT para la almazara»',"abrirDAT()"],
   ['Cuaderno de campo (modelo Junta)','Campo → Curaciones → «Cuaderno de campo»',"abrirCuaderno()"],
   ['Cubas estándar (tus mezclas de siempre)','Campo → Curaciones, al final',"SUB.campo='trat';ir('campo')"],
@@ -1980,7 +1985,7 @@ function vAyuda(){ return `<div class="card"><h2>¿Dónde está cada cosa?</h2>$
 function vCuentas(){
   const s=SUB.cuentas||'gastos';
   const tabs=`<div class="tabs2">${[['gastos','Gastos'],['ingresos','Cobros'],['cosecha','Cosecha'],['papeles','Papeles y plazos'],['facturas','Facturas'],['precios','Precios']].filter(([k])=>visto('cuentas:'+k)).map(([k,t])=>`<button data-sub="cuentas:${k}" class="${s===k?'on':''}">${t}</button>`).join('')}</div>`;
-  return tabs+({gastos:vGastos,ingresos:vIngresos,cosecha:()=>vCosecha()+htmlCompararCampanas(),papeles:vPapeles,facturas:vFacturas,precios:vPrecios}[s])();
+  return tabs+({gastos:vGastos,ingresos:vIngresos,cosecha:()=>vCosecha()+htmlEsperada()+htmlCompararCampanas(),papeles:vPapeles,facturas:vFacturas,precios:vPrecios}[s])();
 }
 
 // ===== Vistas =====
@@ -2060,8 +2065,9 @@ function vCampo(){
   if(SUB.campo==='reun') SUB.campo='tareas';
   const s=SUB.campo||'labores';
   fab(s==='trat'?()=>abrirAplicacion():s==='notas'?'notas':'tareas');
-  const tabs=`<div class="tabs2">${[['labores','Qué toca'],['tecnico','Técnico'],['tareas','Agenda'],['notas','Notas'],['trat','Curaciones'],['almacen','Almacén'],['calc','Calcular dosis']].filter(([k])=>visto('campo:'+k)).map(([k,t])=>`<button data-sub="campo:${k}" class="${s===k?'on':''}">${t}</button>`).join('')}</div>`;
+  const tabs=`<div class="tabs2">${[['labores','Qué toca'],['muestras','Muestras'],['tecnico','Técnico'],['tareas','Agenda'],['notas','Notas'],['trat','Curaciones'],['almacen','Almacén'],['calc','Calcular dosis']].filter(([k])=>visto('campo:'+k)).map(([k,t])=>`<button data-sub="campo:${k}" class="${s===k?'on':''}">${t}</button>`).join('')}</div>`;
   if(s==='labores') return tabs+vLabores();
+  if(s==='muestras') return tabs+vMuestras();
   if(s==='almacen'){ fab('almacen'); return tabs+vAlmacen(); }
   if(s==='notas'){ const ab=D.notas.filter(n=>!n.resuelta), re=D.notas.filter(n=>n.resuelta).slice(0,10);
     return tabs+`<div class="card"><h2>Notas de campo</h2>${htmlNotas(ab)}</div>${re.length?`<div class="card"><h2>Resueltas</h2>${htmlNotas(re)}</div>`:''}`; }
@@ -2306,7 +2312,7 @@ function postMas(){
 }
 
 // ===== Secciones visibles =====
-const SECCIONES=[['inicio:w_tiempo','Inicio: tiempo'],['inicio:w_aceite','Inicio: precio del aceite'],['inicio:w_gasoil','Inicio: precio del gasoil'],['inicio:w_lluvia','Inicio: lluvia caída'],['inicio:w_cita','Inicio: próxima cita o plazo'],['mas:riego','Riego (Más)'],['campo:tecnico','Técnico (Campo)'],['campo:almacen','Almacén (Campo)'],['campo:calc','Calcular dosis (Campo)'],['cuentas:facturas','Facturas (Cuentas)'],['cuentas:precios','Precios (Cuentas)'],['cuentas:papeles','Papeles y plazos (Cuentas)']];
+const SECCIONES=[['inicio:w_tiempo','Inicio: tiempo'],['inicio:w_aceite','Inicio: precio del aceite'],['inicio:w_gasoil','Inicio: precio del gasoil'],['inicio:w_lluvia','Inicio: lluvia caída'],['inicio:w_cita','Inicio: próxima cita o plazo'],['mas:riego','Riego (Más)'],['campo:tecnico','Técnico (Campo)'],['campo:almacen','Almacén (Campo)'],['campo:muestras','Muestras (Campo)'],['campo:calc','Calcular dosis (Campo)'],['cuentas:facturas','Facturas (Cuentas)'],['cuentas:precios','Precios (Cuentas)'],['cuentas:papeles','Papeles y plazos (Cuentas)']];
 function visto(k){ return !(AJ.ocultar||[]).includes(k); }
 
 // ===== Reuniones =====
@@ -2970,6 +2976,133 @@ function pintarCrono(){
     <span class="row" style="gap:6px;flex-wrap:nowrap"><button class="btn sec sm" onclick="pausaCrono()">${c.enPausa?'Seguir':'Parar'}</button><button class="btn sm" onclick="terminarCrono()">Terminar</button><button class="btn sec sm" title="Anular" onclick="anularCrono()">✕</button></span>`;
 }
 setInterval(()=>{ if(crono()) pintarCrono(); }, 30000);
+
+// ===== Muestras: madurez, rendimiento, aforo y algodoncillo =====
+const CLASES_IM=[['Verde intenso','#2e6b1f'],['Verde amarillento','#9bb53a'],['Manchas rojizas (< mitad)','#b8862e'],['Morada (> mitad)','#7a2f5a'],['Negra · pulpa blanca','#2a2030'],['Negra · pulpa morada < mitad','#3d1f3a'],['Negra · morada casi al hueso','#4a1640'],['Negra · morada hasta el hueso','#33002a']];
+const TIPOS_M={madurez:'Índice de madurez',rendimiento:'Análisis de rendimiento',aforo:'Aforo (cosecha esperada)',algodoncillo:'Algodoncillo'};
+function muestras(tipo,fid){ return D.muestras.filter(m=>m.tipo===tipo&&(!fid||m.finca_id===fid)).sort((a,b)=>a.fecha.localeCompare(b.fecha)||(a.created_at||'').localeCompare(b.created_at||'')); }
+function ultMuestra(tipo,fid){ const l=muestras(tipo,fid); return l[l.length-1]; }
+function chipsFinca(name,def){ const fs=opsFincas(false).slice(1); const v=def||APUNTAR_FINCA||ULT.m_finca||fs[0]?.[0]||''; return `<span class="clab">Finca</span><div class="chips" data-chips="${name}">${fs.map(([id,t])=>`<button type="button" class="chip ${id===v?'on':''}" data-val="${id}">${esc(t)}</button>`).join('')}</div><input type="hidden" name="${name}" value="${esc(v)}">`; }
+function pieMuestra(){ return `<div class="grid2"><label>Día<input type="date" name="fecha" value="${hoy()}"></label><label>Notas<input name="notas"></label></div>
+  <div class="row acciones" style="justify-content:flex-end"><button type="button" class="btn sec" onclick="$('#dlg').close()">Cancelar</button><button class="btn" id="fOk">Guardar</button></div>`; }
+async function guardarMuestra(tipo,valor,datos){ const F=$('#frm'); const fid=F.m_finca.value||null; if(!fid){ toast('Elige la finca'); return; }
+  $('#fOk').disabled=true; const r=await insertar('muestras',{tipo,valor,datos,finca_id:fid,fecha:F.fecha.value||hoy(),notas:F.notas.value.trim()||null});
+  if(!r.ok){ $('#fOk').disabled=false; toast('Error: '+r.error.message); return; }
+  recordar('m_finca',fid); $('#dlg').close(); if(!r.offline) await cargar('muestras'); render(); toast(`${TIPOS_M[tipo]} guardado`); }
+function abrirMadurez(){
+  const n=Array(8).fill(0);
+  $('#frm').oninput=null; $('#frm').onchange=null;
+  $('#frm').innerHTML=`<h3>Índice de madurez</h3><p class="mut">Coge unos 2 kg de aceitunas a la altura de la mano, de las cuatro caras del olivo, mézclalas y separa 100 al azar. Toca una vez por cada aceituna según su color (corta las negras para ver la pulpa).</p>
+    ${chipsFinca('m_finca')}
+    <div id="imL">${CLASES_IM.map(([t,c],i)=>`<div class="row" style="flex-wrap:nowrap;align-items:center;margin:4px 0"><span style="width:18px;height:18px;border-radius:50%;background:${c};flex:none"></span><span style="flex:1;font-size:14px">${i} · ${t}</span><button type="button" class="btn sec sm" data-m="${i}">−</button><b style="width:34px;text-align:center" id="imN${i}">0</b><button type="button" class="btn sm" data-p="${i}" style="min-width:52px">+1</button></div>`).join('')}</div>
+    <div class="kpis" style="margin-top:8px"><div class="kpi"><span>Aceitunas contadas</span><b id="imT">0</b></div><div class="kpi"><span>Índice de madurez</span><b id="imV">—</b></div></div>
+    <p class="mut" id="imTxt">En Picual el momento óptimo para la calidad está hacia un índice de 3,5.</p>${pieMuestra()}`;
+  const F=$('#frm'); activarChips(F);
+  const pinta=()=>{ const t=n.reduce((a,b)=>a+b,0), im=t?n.reduce((a,x,i)=>a+x*i,0)/t:null; n.forEach((x,i)=>$('#imN'+i).textContent=x); $('#imT').textContent=t; $('#imV').textContent=im!=null?num(im,2):'—';
+    $('#imTxt').textContent=im==null?'En Picual el momento óptimo para la calidad está hacia un índice de 3,5.':im<2.5?'Aún verde: lejos del punto.':im<3.2?'Se acerca al punto (≈3,5): planifica la recogida.':im<=4?'En el punto o muy cerca: buen momento para empezar.':'Pasada del punto para calidad: más aceite pero peor calidad y más caída.'; return {t,im}; };
+  F.querySelectorAll('[data-p]').forEach(b=>b.onclick=()=>{ n[+b.dataset.p]++; pinta(); if(navigator.vibrate) navigator.vibrate(15); });
+  F.querySelectorAll('[data-m]').forEach(b=>b.onclick=()=>{ const i=+b.dataset.m; if(n[i]) n[i]--; pinta(); });
+  F.onsubmit=e=>{ e.preventDefault(); const {t,im}=pinta(); if(t<20){ toast('Cuenta al menos 20 aceitunas (lo suyo son 100)'); return; } guardarMuestra('madurez',Math.round(im*100)/100,{clases:n,total:t}); };
+  if(!$('#dlg').open) $('#dlg').showModal();
+}
+function abrirRendimiento(){
+  $('#frm').oninput=null; $('#frm').onchange=null;
+  $('#frm').innerHTML=`<h3>Análisis de rendimiento</h3><p class="mut">Lo que te da la cooperativa o el laboratorio cuando llevas una muestra. Con varios análisis de una finca verás si el rendimiento sigue subiendo.</p>
+    ${chipsFinca('m_finca')}
+    <div class="grid2"><label>Rendimiento graso sobre húmedo (%)<input name="humedo" inputmode="decimal" class="big"></label><label>Humedad (%)<input name="humedad" inputmode="decimal"></label>
+    <label>Graso sobre seco (%)<input name="seco" inputmode="decimal" placeholder="se calcula si falta"></label><label>Acidez (º)<input name="acidez" inputmode="decimal"></label></div>
+    <label>Rendimiento industrial (%) <span class="mut">si te lo dan</span><input name="industrial" inputmode="decimal"></label>${pieMuestra()}`;
+  const F=$('#frm'); activarChips(F);
+  F.onsubmit=e=>{ e.preventDefault(); const h=pn(F.humedo.value), hu=pn(F.humedad.value), ind=pn(F.industrial.value); let se=pn(F.seco.value);
+    if(se==null&&h!=null&&hu!=null&&hu<100) se=Math.round(h/(1-hu/100)*100)/100;
+    if(h==null&&ind==null){ toast('Pon al menos el rendimiento'); return; }
+    guardarMuestra('rendimiento',h??ind,{humedo:h,seco:se,humedad:hu,acidez:pn(F.acidez.value),industrial:ind}); };
+  if(!$('#dlg').open) $('#dlg').showModal();
+}
+function abrirAforo(){
+  const kg=[];
+  $('#frm').oninput=null; $('#frm').onchange=null;
+  $('#frm').innerHTML=`<h3>Aforo: cosecha esperada</h3><p class="mut">Mira unos cuantos olivos repartidos por la finca (los buenos y los flojos) y pon los kilos que calculas que tiene cada uno. La app saca la media y la multiplica por los olivos de la finca.</p>
+    ${chipsFinca('m_finca')}
+    <div class="row" style="flex-wrap:nowrap"><input id="afK" inputmode="decimal" placeholder="kg de este olivo" style="flex:1;margin:0"><button type="button" class="btn" id="afA">Añadir</button></div>
+    <div class="chips" style="margin-top:6px">${[10,15,20,25,30,40,50].map(v=>`<button type="button" class="chip" data-af="${v}">${v} kg</button>`).join('')}</div>
+    <div id="afL" class="mut" style="margin:6px 0"></div>
+    <div class="kpis"><div class="kpi"><span>Media por olivo</span><b id="afM">—</b></div><div class="kpi"><span>Cosecha esperada</span><b id="afE">—</b></div></div>
+    <p class="mut" id="afC"></p>${pieMuestra()}`;
+  const F=$('#frm'); activarChips(F);
+  const pinta=()=>{ const f=D.fincas.find(x=>x.id===F.m_finca.value), m=kg.length?kg.reduce((a,b)=>a+b,0)/kg.length:null;
+    $('#afL').innerHTML=kg.length?`${kg.length} olivos: ${kg.map((v,i)=>`<a href="#" onclick="event.preventDefault();" data-q="${i}">${num(v)}</a>`).join(' · ')} <span>(toca uno para quitarlo)</span>`:'Aún ningún olivo.';
+    $('#afL').querySelectorAll('[data-q]').forEach(a=>a.onclick=e=>{ e.preventDefault(); kg.splice(+a.dataset.q,1); pinta(); });
+    $('#afM').textContent=m!=null?num(m,1)+' kg':'—'; const est=m!=null&&f?.olivos?m*f.olivos:null; $('#afE').textContent=est!=null?num(Math.round(est))+' kg':'—';
+    const prev=cosecha(`${parseInt(CAMP)-1}/${String(parseInt(CAMP)).slice(2)}`).porF[f?.id]?.kilos;
+    $('#afC').textContent=est!=null&&prev?`La campaña pasada entregaste ${num(prev)} kg de esta finca (${num(prev/f.olivos,1)} kg/olivo).`:kg.length&&kg.length<8?'Mejor mirar al menos 8-10 olivos para que la media valga.':''; return {m,est}; };
+  const add=v=>{ if(v>0){ kg.push(v); $('#afK').value=''; pinta(); } };
+  $('#afA').onclick=()=>add(pn($('#afK').value)); $('#afK').onkeydown=e=>{ if(e.key==='Enter'){ e.preventDefault(); add(pn($('#afK').value)); } };
+  F.querySelectorAll('[data-af]').forEach(b=>b.onclick=()=>add(+b.dataset.af));
+  F.querySelector('[data-chips=m_finca]').addEventListener('click',()=>setTimeout(pinta,0));
+  F.onsubmit=e=>{ e.preventDefault(); const {m,est}=pinta(); if(!kg.length){ toast('Añade algún olivo'); return; } guardarMuestra('aforo',Math.round(m*10)/10,{olivos:kg,estimado:est?Math.round(est):null}); };
+  pinta(); if(!$('#dlg').open) $('#dlg').showModal();
+}
+function abrirAlgodoncillo(){
+  $('#frm').oninput=null; $('#frm').onchange=null;
+  $('#frm').innerHTML=`<h3>Muestreo de algodoncillo</h3><p class="mut">Al <b>inicio de la floración</b>: 10 olivos y 10 racimos de flor (inflorescencias) por olivo, repartidos por la finca. Cuenta las ninfas (las bolitas bajo la cera blanca) y cuántos racimos tienen algodón.</p>
+    ${chipsFinca('m_finca')}
+    <div class="grid2"><label>Racimos revisados<input name="inf" inputmode="numeric" value="100"></label><label>Ninfas contadas en total<input name="nin" inputmode="numeric" class="big"></label></div>
+    <label>Racimos con algodón<input name="alg" inputmode="numeric"></label>
+    <div id="agR" class="aviso" style="margin:8px 0">Rellena los datos.</div>
+    <p class="mut">Umbral del Consejo Oleícola Internacional que recoge la Junta: tratar si hay <b>más de 2 ninfas por racimo</b> o <b>más del 60 % de racimos con algodón</b>. Antes de tratar, consúltalo con tu técnico de producción integrada y usa solo productos autorizados. <a href="https://www.juntadeandalucia.es/agriculturapescaaguaydesarrollorural/raif/practicas-de-manejo-integrado-de-algodoncillo-en-el-cultivo-de-olivar/" target="_blank" rel="noopener">Guía de la RAIF</a></p>${pieMuestra()}`;
+  const F=$('#frm'); activarChips(F);
+  const calc=()=>{ const i=pn(F.inf.value), n=pn(F.nin.value), a=pn(F.alg.value); if(!(i>0)||(n==null&&a==null)){ $('#agR').className='aviso'; $('#agR').textContent='Rellena los datos.'; return null; }
+    const npi=n!=null?n/i:null, pa=a!=null?a/i*100:null, sup=(npi!=null&&npi>2)||(pa!=null&&pa>60);
+    $('#agR').className='aviso '+(sup?'bad':'ok'); $('#agR').innerHTML=`${npi!=null?`<b>${num(npi,2)}</b> ninfas por racimo`:''}${npi!=null&&pa!=null?' · ':''}${pa!=null?`<b>${num(pa,0)} %</b> de racimos con algodón`:''}<br>${sup?'Supera el umbral: habla con tu técnico para tratar.':'No llega al umbral: no hace falta tratar. Vuelve a mirar en una semana.'}`;
+    return {npi,pa,sup,i,n,a}; };
+  F.oninput=calc;
+  F.onsubmit=e=>{ e.preventDefault(); const r=calc(); if(!r){ toast('Rellena los datos'); return; } guardarMuestra('algodoncillo',r.npi!=null?Math.round(r.npi*100)/100:null,{inflorescencias:r.i,ninfas:r.n,con_algodon:r.a,pct_algodon:r.pa!=null?Math.round(r.pa):null,supera:r.sup}); };
+  if(!$('#dlg').open) $('#dlg').showModal();
+}
+function sparkSerie(v,alto=34){ if(v.length<2) return ''; const mn=Math.min(...v), mx=Math.max(...v), w=200, rg=(mx-mn)||1;
+  return `<svg class="spark" viewBox="0 0 ${w} ${alto}" preserveAspectRatio="none" style="height:${alto}px;max-width:220px" aria-hidden="true"><polyline points="${v.map((y,i)=>`${(i/(v.length-1)*w).toFixed(1)},${(alto-3-(y-mn)/rg*(alto-6)).toFixed(1)}`).join(' ')}" fill="none" stroke="var(--olv)" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>`; }
+function estadoRend(fid){ const l=muestras('rendimiento',fid).filter(m=>m.fecha>=campRango(CAMP)[0]); if(l.length<2) return null;
+  const k=x=>Number(x.datos?.seco??x.valor), a=k(l[l.length-2]), b=k(l[l.length-1]); if(isNaN(a)||isNaN(b)) return null; return {dif:b-a, para:b-a<0.3}; }
+function vMuestras(){
+  fab(null); const fs=D.fincas.filter(f=>f.activa), [ini]=campRango(CAMP);
+  const fila=f=>{ const im=muestras('madurez',f.id).filter(m=>m.fecha>=ini), rd=muestras('rendimiento',f.id).filter(m=>m.fecha>=ini), af=ultMuestra('aforo',f.id), ag=ultMuestra('algodoncillo',f.id), er=estadoRend(f.id);
+    const uIm=im[im.length-1], uRd=rd[rd.length-1];
+    return `<div class="lab"><div class="row" style="flex-wrap:nowrap"><b style="flex:1">${esc(f.nombre)}</b>${f.algodoncillo?'<span class="tag">algodoncillo</span>':''}</div>
+      <div class="grid2" style="margin-top:4px">
+      <div><span class="mut">Madurez</span><br>${uIm?`<b>${num(uIm.valor,2)}</b> <span class="mut">${fFecha(uIm.fecha)}</span>${sparkSerie(im.map(m=>+m.valor))}`:'<span class="mut">—</span>'}</div>
+      <div><span class="mut">Rendimiento</span><br>${uRd?`<b>${num(uRd.valor,1)} %</b>${uRd.datos?.seco?` <span class="mut">(${num(uRd.datos.seco,1)} s/seco)</span>`:''} <span class="mut">${fFecha(uRd.fecha)}</span>${er?`<div class="${er.para?'neg':'pos'}" style="font-size:12px">${er.para?'ha dejado de subir':`sube ${num(er.dif,1)} puntos`}</div>`:''}${sparkSerie(rd.map(m=>+(m.datos?.seco??m.valor)))}`:'<span class="mut">—</span>'}</div>
+      <div><span class="mut">Aforo</span><br>${af?`<b>${af.datos?.estimado?num(af.datos.estimado)+' kg':num(af.valor,1)+' kg/olivo'}</b> <span class="mut">${fFecha(af.fecha)}</span>`:'<span class="mut">—</span>'}</div>
+      <div><span class="mut">Algodoncillo</span><br>${ag?`<b class="${ag.datos?.supera?'neg':''}">${ag.valor!=null?num(ag.valor,2)+' ninfas/racimo':(ag.datos?.pct_algodon??'')+' %'}</b> <span class="mut">${fFecha(ag.fecha)}</span>`:'<span class="mut">—</span>'}</div></div></div>`; };
+  const ult=[...D.muestras].sort((a,b)=>(b.fecha+(b.created_at||'')).localeCompare(a.fecha+(a.created_at||''))).slice(0,12);
+  return `<div class="apuntar" style="margin-bottom:12px">${[['Madurez','🫒','abrirMadurez()'],['Rendimiento','🧪','abrirRendimiento()'],['Aforo','⚖️','abrirAforo()'],['Algodoncillo','🐛','abrirAlgodoncillo()']].map(([t,i,fn])=>`<button type="button" onclick="${fn}"><span>${i}</span>${t}</button>`).join('')}</div>
+    <div class="card"><h2>Por finca · ${esc(CAMP)}</h2>${fs.map(fila).join('')||'<p class="mut">Da de alta tus fincas.</p>'}
+      <p class="mut">Madurez: en Picual, el punto para calidad está hacia 3,5. Rendimiento: cuando entre dos análisis seguidos el graso sobre seco sube menos de 0,3 puntos, ya no gana aceite y la aceituna solo pierde calidad y se cae.</p></div>
+    ${ult.length?`<div class="card"><h2>Últimas muestras</h2><table>${ult.map(m=>`<tr class="click" onclick="borrarMuestra('${m.id}')"><td>${esc(TIPOS_M[m.tipo]||m.tipo)}<div class="mut">${fFecha(m.fecha)} · ${esc(fincaNom(m.finca_id))}${m.notas?' · '+esc(m.notas):''}</div></td><td class="n">${m.valor!=null?num(m.valor,2):''}</td></tr>`).join('')}</table><p class="mut">Toca una para borrarla.</p></div>`:''}
+    <div class="card"><h2>Fincas con algodoncillo</h2><p class="mut">Las que suelen tenerlo: te aviso en primavera para muestrear.</p><div class="chips">${fs.map(f=>`<button class="chip ${f.algodoncillo?'on':''}" onclick="marcarAlg('${f.id}',${!f.algodoncillo})">${esc(f.nombre)}</button>`).join('')}</div></div>`;
+}
+async function marcarAlg(fid,v){ const {error}=await sb.from('olv_fincas').update({algodoncillo:v}).eq('id',fid); if(error){ if(!sinRed(error)) toast('Error: '+error.message); return; } await cargar('fincas'); render(); }
+async function borrarMuestra(id){ if(!confirm('¿Borrar esta muestra?')) return; const {error}=await sb.from('olv_muestras').delete().eq('id',id); if(error){ if(!sinRed(error)) toast('Error: '+error.message); return; } await cargar('muestras'); render(); }
+function htmlEsperada(){ const fs=D.fincas.filter(f=>f.activa), [ini]=campRango(CAMP); const K=cosecha(CAMP);
+  const l=fs.map(f=>{ const a=muestras('aforo',f.id).filter(m=>m.fecha>=addDias(ini,-60)).pop(); return a&&a.datos?.estimado?{f,est:a.datos.estimado,real:K.porF[f.id]?.kilos||0}:null; }).filter(Boolean);
+  if(!l.length) return `<div class="card"><h2>Cosecha esperada</h2><p class="mut">Haz un aforo por finca (Campo → Muestras → Aforo) y aquí verás lo que esperas y lo que llevas entregado.</p><button class="btn sec sm" onclick="abrirAforo()">Hacer aforo</button></div>`;
+  const tE=l.reduce((a,x)=>a+x.est,0), tR=l.reduce((a,x)=>a+x.real,0);
+  return `<div class="card"><h2>Cosecha esperada · ${esc(CAMP)}<span class="sp"></span><button class="btn sec sm" onclick="abrirAforo()">Nuevo aforo</button></h2><table><tr><th>Finca</th><th class="n">Esperado</th><th class="n">Entregado</th><th class="n">Falta</th></tr>${l.map(x=>`<tr><td>${esc(x.f.nombre)}</td><td class="n">${num(x.est)}</td><td class="n">${num(x.real)}</td><td class="n">${x.est>x.real?num(x.est-x.real):'<span class="pos">hecho</span>'}</td></tr>`).join('')}<tr><td><b>Total</b></td><td class="n"><b>${num(tE)}</b></td><td class="n"><b>${num(tR)}</b></td><td class="n"><b>${tE>tR?num(tE-tR):''}</b></td></tr></table><p class="mut">El esperado sale de tu aforo: es tan bueno como los olivos que mires. Al final de la campaña compara para afinar el ojo el año que viene.</p></div>`; }
+function avisosMuestras(h){
+  const out=[], md=h.slice(5), fs=D.fincas.filter(f=>f.activa);
+  // otoño: madurez y rendimiento
+  if(md>='10-15'&&md<='12-31'&&fs.length){
+    const sin=fs.filter(f=>{ const u=[ultMuestra('madurez',f.id),ultMuestra('rendimiento',f.id)].filter(Boolean).map(m=>m.fecha).sort().pop(); return !u||difDias(u,h)>10; });
+    if(sin.length) out.push({c:'',t:`Época de ver cuándo empezar: mira la madurez o pide muestra de rendimiento en <b>${sin.map(f=>esc(f.nombre)).join(', ')}</b>`,ord:25,fn:"SUB.campo='muestras';ir('campo')"});
+    fs.forEach(f=>{ const u=ultMuestra('madurez',f.id); if(u&&difDias(u.fecha,h)<=14&&Number(u.valor)>=3&&Number(u.valor)<=4.2) out.push({c:'',t:`<b>${esc(f.nombre)}</b>: índice de madurez ${num(u.valor,2)}, en el punto o casi (≈3,5)`,ord:24,fn:"SUB.campo='muestras';ir('campo')"});
+      const er=estadoRend(f.id); if(er&&er.para) out.push({c:'',t:`<b>${esc(f.nombre)}</b>: el rendimiento ha dejado de subir. Ya no gana aceite esperando`,ord:24,fn:"SUB.campo='muestras';ir('campo')"}); });
+  }
+  // primavera: algodoncillo
+  if(md>='04-01'&&md<='05-31'){ const al=fs.filter(f=>f.algodoncillo); const ya=al.filter(f=>{ const u=ultMuestra('algodoncillo',f.id); return u&&difDias(u.fecha,h)<=7; });
+    if(al.length&&ya.length<al.length) out.push({c:'',t:`Floración: muestrea el <b>algodoncillo</b> en ${al.filter(f=>!ya.includes(f)).map(f=>esc(f.nombre)).join(', ')} (10 olivos × 10 racimos)`,ord:22,fn:'abrirAlgodoncillo()'});
+    al.forEach(f=>{ const u=ultMuestra('algodoncillo',f.id); if(u&&u.datos?.supera&&difDias(u.fecha,h)<=10) out.push({c:'bad',t:`<b>${esc(f.nombre)}</b>: el algodoncillo supera el umbral (${u.valor!=null?num(u.valor,2)+' ninfas/racimo':u.datos.pct_algodon+' %'}). Habla con tu técnico`,ord:5,fn:"SUB.campo='muestras';ir('campo')"}); }); }
+  return out;
+}
 
 // ===== Exportar =====
 function bajar(nombre, contenido, tipo){ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([contenido],{type:tipo})); a.download=nombre; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1000); }
