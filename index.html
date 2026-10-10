@@ -172,7 +172,7 @@ details.adv{margin:4px 0 10px}details.adv summary{cursor:pointer;color:var(--olv
 <script>
 // ===== Configuración =====
 const VERSION = '3.8';
-const VERSION_FECHA = '9 oct 2026';
+const VERSION_FECHA = '10 oct 2026';
 const CREDITOS = `Olivas v${VERSION} (${VERSION_FECHA}) · © 2026 Alfonso Carrascosa Martínez · Hecha con Claude (Anthropic)`;
 const SUPA_URL = 'https://kseyndjbmkaflpoqitsj.supabase.co';
 const SUPA_KEY = 'sb_publishable_CbwajQX7DgAoK3fV6GVU5g_18CWeqMG';
@@ -2363,7 +2363,8 @@ async function postInicio(){
 }
 
 // ===== Más: fincas, maquinaria, ajustes =====
-function vMas(){
+function vMas(){ return vMasDentro()+`<p class="creditos">Olivas v${VERSION} (${VERSION_FECHA})<br>© 2026 Alfonso Carrascosa Martínez · Hecha con Claude (Anthropic)</p>`; }
+function vMasDentro(){
   const s=SUB.mas||'fincas';
   fab(s==='fincas'?'fincas':s==='maq'?'maquinas':s==='riego'?'riego_pagos':null);
   const tabs=`<div class="tabs2">${[['fincas','Fincas'],['riego','Riego'],['maq','Máquinas'],['ajustes','Ajustes'],['ayuda','¿Dónde está?']].filter(([k])=>visto('mas:'+k)).map(([k,t])=>`<button data-sub="mas:${k}" class="${s===k?'on':''}">${t}</button>`).join('')}</div>`;
