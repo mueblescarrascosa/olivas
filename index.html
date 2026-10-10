@@ -173,7 +173,7 @@ details.adv{margin:4px 0 10px}details.adv summary{cursor:pointer;color:var(--olv
 
 <script>
 // ===== Configuración =====
-const VERSION = '3.8';
+const VERSION = '3.9';
 const VERSION_FECHA = '10 oct 2026';
 const CREDITOS = `Olivas v${VERSION} (${VERSION_FECHA}) · © 2026 Alfonso Carrascosa Martínez · Hecha con Claude (Anthropic)`;
 const SUPA_URL = 'https://kseyndjbmkaflpoqitsj.supabase.co';
@@ -253,7 +253,14 @@ async function entrar(){
   await cargarTodo();
   ir('inicio');
   vaciarCola();
+  buscarVersion(); document.addEventListener('visibilitychange',()=>{ if(!document.hidden) buscarVersion(); });
 }
+// ¿Hay una versión nueva subida a la web? El móvil a veces guarda la vieja: se avisa y se recarga con un toque
+let VER_AVISADA=false, VER_ULT=0;
+async function buscarVersion(){ if(VER_AVISADA||!navigator.onLine||!/^https?:/.test(location.protocol)||Date.now()-VER_ULT<10*60e3) return; VER_ULT=Date.now();
+  try{ const r=await fetch(location.pathname+'?v='+Date.now(),{cache:'no-store'}); if(!r.ok) return; const t=await r.text(); const m=/const VERSION = '([^']+)'/.exec(t);
+    if(m&&m[1]!==VERSION){ VER_AVISADA=true; const b=document.createElement('div'); b.className='aviso ok'; b.style.cssText='position:fixed;left:12px;right:12px;bottom:76px;z-index:50;display:flex;gap:10px;align-items:center;box-shadow:var(--sh)';
+      b.innerHTML=`<span style="flex:1">Hay una versión nueva de Olivas (v${esc(m[1])}).</span><button class="btn sm" onclick="location.replace(location.pathname+'?v='+Date.now())">Actualizar</button>`; document.body.appendChild(b); } }catch(e){} }
 async function salir(){
   if(COLA.length && !confirm('Hay apuntes sin subir que se perderán si cierras sesión. ¿Cerrar igualmente?')) return;
   try{ localStorage.removeItem('olv_cache'); localStorage.removeItem('olv_cola'); }catch(e){}
