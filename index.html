@@ -309,6 +309,7 @@ async function cargarTodo(){
   } else {
     const {data} = await sb.from('olv_ajustes').select('datos').maybeSingle();
     if(data && data.datos){ AJ = {...AJ, ...data.datos}; AJ.cats = data.datos.cats?.length ? data.datos.cats : CATS_DEF.slice(); AJ.umb = {...UMB_DEF, ...(data.datos.umb||{})}; }
+    if(unirClientes()){ sincClientes(); setTimeout(()=>guardarAjustes(true),0); }
     if(!AJ.cats.includes(CAT_MAQ)) AJ.cats.splice(Math.max(0,AJ.cats.length-1),0,CAT_MAQ);
     if(D.fincas.some(f=>f.arrendada) && !AJ.cats.includes(CAT_RENTA)) AJ.cats.splice(Math.max(0,AJ.cats.length-1),0,CAT_RENTA);
     try{ const sinPend={}; Object.keys(D).forEach(k=>sinPend[k]=D[k].filter(r=>!COLA.some(i=>i.filas.some(f=>f.id===r.id)))); localStorage.setItem('olv_cache',JSON.stringify({D:sinPend,AJ,t:Date.now()})); }catch(e){}
@@ -1778,11 +1779,21 @@ let VOLVER='inicio';
 // --- Buscador
 function abrirBuscar(){
   $('#frm').oninput=null; $('#frm').onchange=null; $('#frm').onsubmit=e=>e.preventDefault();
-  $('#frm').innerHTML=`<h3>Buscar</h3><input id="bQ" placeholder="Producto, proveedor, trabajador, tarea, nota…" autocomplete="off"><div id="bRes" style="margin-top:10px"></div>
+  $('#frm').innerHTML=`<h3>Buscar</h3><input id="bQ" placeholder="Producto, almazara, trabajador, tarea… o un apartado" autocomplete="off"><div id="bRes" style="margin-top:10px"></div>
     <div class="row acciones" style="justify-content:flex-end"><button type="button" class="btn sec" onclick="$('#dlg').close()">Cerrar</button></div>`;
   $('#dlg').showModal(); const q=$('#bQ'); setTimeout(()=>q.focus(),50);
   q.oninput=()=>{ const t=q.value.trim().toLowerCase(); if(t.length<2){ $('#bRes').innerHTML=''; return; }
-    const R=[], has=(...x)=>x.some(v=>String(v??'').toLowerCase().includes(t));
+    const nrm=x=>String(x??'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+    const pals=nrm(t).split(/\s+/).filter(Boolean).map(w=>w.length>4?w.replace(/(es|s)$/,''):w);
+    const R=[], has=(...x)=>{ const z=nrm(x.join(' ')); return pals.every(w=>z.includes(w)); };
+    // apartados de la app («¿Dónde está?»)
+    MAPA.filter(([q,d])=>has(q,d)).slice(0,6).forEach(([q,d,fn])=>R.push(['Apartado',q,d,`$('#dlg').close();${fn}`]));
+    misAlm().filter(a=>has(a.nombre,a.cif,a.localidad,a.contacto,a.telefono,'almazara cooperativa puesto')).forEach(a=>R.push(['Almazara',a.nombre,[a.cif,a.telefono,a.localidad].filter(Boolean).join(' · '),`editarAlmazaras()`]));
+    D.almacen.filter(a=>has(a.nombre,a.num_registro,a.tipo)).slice(0,10).forEach(a=>R.push(['Almacén',`${a.nombre}${a.cantidad!=null?' · '+num(a.cantidad,2)+' '+(a.unidad||''):''}`,a.tipo||'',`abrir('almacen',D.almacen.find(y=>y.id==='${a.id}'))`]));
+    D.pesadas.filter(x=>has(x.almazara,x.ticket,x.notas)).slice(0,10).forEach(x=>R.push(['Pesada',`${num(x.kilos)} kg · ${x.almazara||''}`,`${fincaNom(x.finca_id)} · ${fFecha(x.fecha)}`,`abrir('pesadas',D.pesadas.find(y=>y.id==='${x.id}'))`]));
+    D.ingresos.filter(x=>has(x.almazara,x.tipo,x.notas,x.campana)).slice(0,10).forEach(x=>R.push(['Cobro',`${x.tipo} · ${eur(x.importe)}${x.almazara?' · '+x.almazara:''}`,fFecha(x.fecha),`abrir('ingresos',D.ingresos.find(y=>y.id==='${x.id}'))`]));
+    D.reuniones.filter(x=>has(x.titulo,x.lugar,x.notas,x.tipo)).slice(0,8).forEach(x=>R.push(['Reunión',x.titulo,`${fFecha(x.fecha)}${x.lugar?' · '+x.lugar:''}`,`abrir('reuniones',D.reuniones.find(y=>y.id==='${x.id}'))`]));
+    D.muestras.filter(x=>has(TIPOS_M[x.tipo],x.notas,x.datos?.laboratorio)).slice(0,6).forEach(x=>R.push(['Muestra',TIPOS_M[x.tipo]||x.tipo,`${fincaNom(x.finca_id)} · ${fFecha(x.fecha)}`,['foliar','suelo'].includes(x.tipo)?`verAnalisis('${x.id}')`:`$('#dlg').close();SUB.campo='muestras';ir('campo')`]));
     D.fincas.filter(f=>has(f.nombre,f.municipio,f.poligono_parcela)).forEach(f=>R.push(['Finca',f.nombre,'',`$('#dlg').close();verFinca('${f.id}')`]));
     D.gastos.filter(g=>has(g.concepto,g.proveedor,g.categoria,g.notas)).slice(0,20).forEach(g=>R.push(['Gasto',`${g.concepto||g.categoria} · ${eur(g.importe)}`,fFecha(g.fecha),g.factura_id?`$('#dlg').close();verFactura('${g.factura_id}')`:`abrir('gastos',D.gastos.find(x=>x.id==='${g.id}'))`]));
     D.facturas.filter(f=>has(f.proveedor,f.numero,f.cif)).slice(0,10).forEach(f=>R.push(['Factura',`${f.proveedor||''} ${f.numero||''} · ${eur(f.total)}`,fFecha(f.fecha),`$('#dlg').close();verFactura('${f.id}')`]));
@@ -2075,15 +2086,13 @@ function abrirDatosCuaderno(){
     <b>Si tratas tú: tu carné</b><div class="grid2">${i('t','ropo','Nº ROPO / carné',T.ropo)}${i('t','tipo_carne','Nivel (Básico, Cualificado…)',T.tipo_carne)}<label>Caduca el<input type="date" data-g="t" data-k="carne_caduca" id="tCad" value="${esc(T.carne_caduca||'')}"></label></div>
     <p class="mut">El carné de los demás aplicadores se pone en cada trabajador o empresa (Jornales → Gente y empresas). El ROMA y la inspección del atomizador, en Más → Máquinas.</p>
     <b>Asesor GIP</b><div class="grid2">${i('a','nombre','Nombre o razón social',A.nombre)}${i('a','nif','NIF',A.nif)}${i('a','num','Nº de identificación / ROPO',A.num)}${i('a','codigo','Código del sistema de asesoramiento',A.codigo)}</div>
-    <b>Almazaras a las que entregas</b><div id="dcCli">${(C.length?C:[{nombre:[...new Set(D.pesadas.map(p=>p.almazara).filter(Boolean))][0]||''}]).map(filaC).join('')}</div>
-    <button type="button" class="btn sec sm" id="dcMas">+ Otra almazara</button>
+    <b>Almazaras a las que entregas</b><p class="mut">${misAlm().length?misAlm().map(a=>esc(a.nombre)+(a.cif?' ('+esc(a.cif)+')':' <span class="neg">sin CIF</span>')).join(' · '):'Ninguna todavía.'} <a href="#" onclick="event.preventDefault();editarAlmazaras()">Editar en «Mis almazaras»</a></p>
     <div class="row acciones" style="justify-content:flex-end"><button type="button" class="btn sec" id="fCancel">Cancelar</button><button class="btn" id="fOk">Guardar</button></div>`;
   let n=C.length||1; campoExpedicion('#tCad');
-  $('#dcMas').onclick=()=>{ $('#dcCli').insertAdjacentHTML('beforeend',filaC({},n++)); };
   $('#fCancel').onclick=()=>$('#dlg').close();
   $('#frm').onsubmit=async e=>{ e.preventDefault();
     const t={...T}, a={...A}; document.querySelectorAll('#frm [data-g]').forEach(x=>{ (x.dataset.g==='t'?t:a)[x.dataset.k]=x.value.trim(); });
-    AJ.titular=t; AJ.asesor=a; AJ.clientes=[...document.querySelectorAll('[data-cli]')].map(el=>Object.fromEntries([...el.querySelectorAll('[data-ck]')].map(x=>[x.dataset.ck,x.value.trim()]))).filter(c=>c.nombre);
+    AJ.titular=t; AJ.asesor=a; sincClientes();
     await guardarAjustes(); abrirCuaderno(); };
   if(!$('#dlg').open) $('#dlg').showModal();
 }
@@ -3011,6 +3020,7 @@ function revisarLiq(d, blob, mime, ia){
       let np=0;
       if(F.crearP&&F.crearP.checked){ const fid=F.p_finca.value||null; const filas=nuevas.map(x=>({fecha:x.fecha, kilos:Number(x.kilos), rendimiento:x.rendimiento_pct??null, ticket:x.ticket?String(x.ticket):null, tipo:/suelo/i.test(x.tipo||'')?'Suelo':'Vuelo', almazara:alm, finca_id:fid, notas:x.paraje?`Paraje: ${x.paraje}`:null}));
         if(filas.length){ const r=await insertar('pesadas',filas); if(!r.ok) throw r.error; np=filas.length; } }
+      if(alm) await aprenderAlm(alm,d.cif);
       $('#dlg').close(); await Promise.all(['ingresos','pesadas'].map(cargar)); ACE=null; pintarCampanas(); render();
       toast(`${soloTicket?'':`Cobro de ${eur(imp)} guardado`}${np?`${soloTicket?'':' · '}${np} pesadas apuntadas`:''}`);
     }catch(err){ $('#fOk').disabled=false; $('#fOk').textContent='Guardar'; toast('Error: '+(err.message||err)); }
@@ -3019,23 +3029,39 @@ function revisarLiq(d, blob, mime, ia){
 
 // ===== Mis almazaras (puntos de entrega guardados) =====
 function misAlm(){ return (AJ.almazaras||[]).filter(a=>a&&a.nombre); }
+const ALM_CAMPOS=[['cif','CIF / NIF'],['telefono','Teléfono'],['email','Correo'],['contacto','Persona de contacto'],['direccion','Dirección'],['localidad','Localidad'],['rgseaa','Nº RGSEAA (para el DAT)'],['notas','Notas (horario, cuenta…)']];
+// Las almazaras del cuaderno (AJ.clientes) salen de aquí, para no tener dos listas
+function sincClientes(){ AJ.clientes=misAlm().map(a=>({nombre:a.nombre,nif:a.cif||'',direccion:[a.direccion,a.localidad].filter(Boolean).join(', '),rgseaa:a.rgseaa||''})); }
+function unirClientes(){ const C=(AJ.clientes||[]).filter(c=>c&&c.nombre); if(!C.length) return false; let cambio=false; AJ.almazaras=[...(AJ.almazaras||[])];
+  C.forEach(c=>{ const a=AJ.almazaras.find(x=>mismaAlm(x.nombre,c.nombre)); if(a){ if(!a.cif&&c.nif){ a.cif=c.nif; cambio=true; } if(!a.direccion&&c.direccion){ a.direccion=c.direccion; cambio=true; } if(!a.rgseaa&&c.rgseaa){ a.rgseaa=c.rgseaa; cambio=true; } }
+    else { AJ.almazaras.push({nombre:c.nombre,tipo:'puesto',cif:c.nif||'',direccion:c.direccion||'',rgseaa:c.rgseaa||''}); cambio=true; } }); return cambio; }
+// Al leer una liquidación o un ticket: guarda el CIF de la almazara si no lo tenías
+async function aprenderAlm(nombre,cif){ nombre=(nombre||'').trim(); cif=(cif||'').trim().toUpperCase(); if(!nombre) return;
+  AJ.almazaras=[...(AJ.almazaras||[])]; let a=AJ.almazaras.find(x=>x.nombre&&mismaAlm(x.nombre,nombre));
+  if(!a){ if(AJ.almazaras.length>=8) return; a={nombre,tipo:/coop|\bs\.?\s?c\.?\s?a\b|sca\b/i.test(nombre)?'coop':'puesto',defecto:!AJ.almazaras.length}; AJ.almazaras.push(a); }
+  else if(!cif||a.cif) return;
+  if(cif) a.cif=cif; sincClientes(); await guardarAjustes(true); }
+function telLimpio(t){ return String(t||'').replace(/[^+\d]/g,''); }
 function almDefecto(){ const l=misAlm(); return (l.find(a=>a.defecto)||l[0]||{}).nombre||''; }
 function editarAlmazaras(){
   const L=misAlm().length?misAlm():almazarasConocidas().slice(0,4).map((n,i)=>({nombre:n,tipo:(AJ.venta||{}).coop?(mismaAlm(n,AJ.venta.coop)?'coop':'puesto'):(i===0?'coop':'puesto'),defecto:i===0}));
+  const acc=a=>{ const t=telLimpio(a.telefono), dir=[a.direccion,a.localidad].filter(Boolean).join(', '); return [t?`<a href="tel:${t}">📞 Llamar</a>`:'',a.email?`<a href="mailto:${esc(a.email)}">✉️ Correo</a>`:'',dir||a.nombre?`<a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(dir||a.nombre)}" target="_blank" rel="noopener">📍 Cómo llegar</a>`:''].filter(Boolean).join(' · '); };
   const fila=(a,i)=>`<div class="lab" data-am="${i}"><label>Nombre<input data-ak="nombre" value="${esc(a.nombre||'')}" placeholder="p. ej. SCA San Francisco"></label>
     <div class="chips" data-chips="t_${i}"><button type="button" class="chip ${a.tipo!=='puesto'?'on':''}" data-val="coop">Cooperativa</button><button type="button" class="chip ${a.tipo==='puesto'?'on':''}" data-val="puesto">Puesto de compra / almazara</button></div><input type="hidden" name="t_${i}" value="${a.tipo==='puesto'?'puesto':'coop'}">
-    <label class="chk"><input type="radio" name="am_def" value="${i}" ${a.defecto?'checked':''}> La de siempre (sale ya marcada)</label></div>`;
+    <label class="chk"><input type="radio" name="am_def" value="${i}" ${a.defecto?'checked':''}> La de siempre (sale ya marcada)</label>
+    ${a.nombre?`<div style="margin:2px 0 6px">${acc(a)}</div>`:''}
+    <details class="adv"><summary>Datos${a.cif||a.telefono?': '+esc([a.cif,a.telefono].filter(Boolean).join(' · ')):' (CIF, teléfono, dirección…)'}</summary><div class="grid2">${ALM_CAMPOS.map(([k,l])=>`<label>${l}<input data-ak="${k}" value="${esc(a[k]||'')}" ${k==='telefono'?'inputmode="tel"':k==='email'?'inputmode="email"':''}></label>`).join('')}</div></details></div>`;
   $('#frm').oninput=null; $('#frm').onchange=null;
-  $('#frm').innerHTML=`<h3>Mis almazaras</h3><p class="mut">Tus puntos de entrega. Salen como botones al apuntar pesadas y cobros, y la de siempre ya viene marcada. Deja el nombre vacío para quitar una.</p><div id="amL">${(L.length?L:[{nombre:'',tipo:'coop',defecto:true}]).map(fila).join('')}</div>
+  $('#frm').innerHTML=`<h3>Mis almazaras</h3><p class="mut">Tus puntos de entrega. Salen como botones al apuntar pesadas y cobros, y la de siempre ya viene marcada. El CIF se rellena solo al escanear una liquidación; el resto (teléfono, dirección…) lo pones tú una vez. Deja el nombre vacío para quitar una.</p><div id="amL">${(L.length?L:[{nombre:'',tipo:'coop',defecto:true}]).map(fila).join('')}</div>
     <button type="button" class="btn sec sm" id="amMas">+ Otra</button>
     <div class="row acciones" style="justify-content:flex-end"><button type="button" class="btn sec" id="fCancel">Cancelar</button><button class="btn" id="fOk">Guardar</button></div>`;
   let n=Math.max(L.length,1); activarChips($('#frm'));
   $('#amMas').onclick=()=>{ $('#amL').insertAdjacentHTML('beforeend',fila({tipo:'puesto'},n++)); activarChips($('#amL').lastElementChild); };
   $('#fCancel').onclick=()=>$('#dlg').close();
   $('#frm').onsubmit=async e=>{ e.preventDefault(); const def=$('#frm [name=am_def]:checked')?.value;
-    const l=[...document.querySelectorAll('[data-am]')].map(el=>{ const i=el.dataset.am; return {nombre:el.querySelector('[data-ak=nombre]').value.trim(), tipo:$(`#frm [name=t_${i}]`).value, defecto:def===i}; }).filter(a=>a.nombre);
+    const l=[...document.querySelectorAll('[data-am]')].map(el=>{ const i=el.dataset.am, o={nombre:el.querySelector('[data-ak=nombre]').value.trim(), tipo:$(`#frm [name=t_${i}]`).value, defecto:def===i}; ALM_CAMPOS.forEach(([k])=>{ const v=el.querySelector(`[data-ak=${k}]`)?.value.trim(); if(v) o[k]=k==='cif'?v.toUpperCase():v; }); return o; }).filter(a=>a.nombre);
     if(l.length&&!l.some(a=>a.defecto)) l[0].defecto=true;
-    AJ.almazaras=l; const c=l.find(a=>a.tipo==='coop'&&a.defecto)||l.find(a=>a.tipo==='coop'); AJ.venta={...(AJ.venta||{}),coop:c?c.nombre:''};
+    AJ.almazaras=l; sincClientes(); const c=l.find(a=>a.tipo==='coop'&&a.defecto)||l.find(a=>a.tipo==='coop'); AJ.venta={...(AJ.venta||{}),coop:c?c.nombre:''};
     $('#dlg').close(); await guardarAjustes(); render(); };
   if(!$('#dlg').open) $('#dlg').showModal();
 }
