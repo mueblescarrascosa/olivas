@@ -60,6 +60,8 @@ tr.click{cursor:pointer}tr.click:hover{background:rgba(127,127,100,.08)}
 .mut{color:var(--mut);font-size:13px}
 .tag{display:inline-block;padding:1px 7px;border-radius:10px;font-size:12px;background:var(--line);color:var(--ink)}
 .dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px;vertical-align:middle}
+a,.lnk{color:var(--olv);font-weight:600;text-decoration:underline;text-decoration-color:color-mix(in srgb,var(--olv) 45%,transparent);text-underline-offset:2px;cursor:pointer}
+a:active,.lnk:active{opacity:.6}
 .g{background:var(--ok)}.a{background:var(--warn)}.r{background:var(--bad)}
 .aviso{padding:8px 10px;border-left:4px solid var(--warn);background:rgba(197,138,11,.08);border-radius:6px;margin-bottom:6px}
 .aviso.bad{border-color:var(--bad);background:rgba(192,57,43,.08)}
@@ -1221,7 +1223,7 @@ const KW = {
   atomizador:['atomiz','calibr'], prep_recogida:['mantos','vibrador','preparar recog'],
 };
 const MESES=['','ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
-function laboresActivas(){ const off=new Set(AJ.labores_off||[]); return [...LABORES,...(AJ.labores_propias||[]).map(p=>({...p,propia:1,fam:p.id}))].filter(l=>!off.has(l.id)); }
+function laboresActivas(){ const off=new Set(AJ.labores_off||[]); return [...LABORES.map(l=>l.id==='abonado_suelo'?{...l,meses:abonoMeses()}:l),...(AJ.labores_propias||[]).map(p=>({...p,propia:1,fam:p.id}))].filter(l=>!off.has(l.id)); }
 function ventana(meses, f=hoy()){
   if(!meses||!meses.length) return null;
   const [y,m]=f.split('-').map(Number); if(!meses.includes(m)) return null;
@@ -1240,6 +1242,7 @@ function eventos(){
   D.servicios.forEach(x=>ev.push({fecha:x.fecha,finca:x.finca_id,txt:'recogida',tipo:'jornal'}));
   D.tratamientos.forEach(t=>ev.push({fecha:t.fecha,finca:t.finca_id,txt:`${t.producto||''} ${t.motivo||''}`.toLowerCase(),tipo:'trat'}));
   D.tareas.filter(t=>t.hecha).forEach(t=>ev.push({fecha:t.hecha_fecha||t.fecha,finca:t.finca_id,txt:`${t.titulo} ${t.tipo||''}`.toLowerCase(),tipo:'tarea'}));
+  D.muestras.filter(m=>m.tipo==='foliar').forEach(m=>ev.push({fecha:m.fecha,finca:m.finca_id,txt:'análisis foliar',tipo:'muestra'}));
   return ev;
 }
 function casa(L, e){
@@ -1369,6 +1372,7 @@ async function contextoTecnico(pregunta){
     produccion_por_campana:Object.entries(prod).map(([c,x])=>({campana:c,kilos:Math.round(x.kilos),rendimiento_medio:x.kilos?Math.round(x.rend_x_kg/x.kilos*100)/100:null})),
     muestras_ult_6_meses:D.muestras.filter(m=>m.fecha>=hace(180)).map(m=>({fecha:m.fecha,finca:fincaNom(m.finca_id),tipo:m.tipo,valor:m.valor,datos:m.datos})),
     fincas_con_algodoncillo:D.fincas.filter(f=>f.algodoncillo).map(f=>f.nombre),
+    analisis_suelo_y_foliar:D.fincas.filter(f=>f.activa).map(f=>{ const x=t=>{ const m=ultMuestra(t,f.id); return m?{fecha:m.fecha, laboratorio:m.datos?.laboratorio||null, valores:(m.datos?.valores||[]).map(v=>({...v, nivel_app:nivelAna(t,v)?.n||null}))}:null; }; return {finca:f.nombre, foliar:x('foliar'), suelo:x('suelo')}; }).filter(a=>a.foliar||a.suelo),
     pendientes_calendario:pendientesLabores().filter(g=>g.toca).map(g=>({labor:g.L.nombre,fincas:g.fincas.map(f=>f?f.nombre:'todas'),dias_que_quedan:g.resta})),
     consejo_anterior: D.consejos[0] ? {fecha:D.consejos[0].fecha, pregunta:D.consejos[0].pregunta, resumen:D.consejos[0].respuesta?.resumen, te_pregunto:D.consejos[0].respuesta?.preguntas} : null,
     pregunta:pregunta||null,
@@ -1896,7 +1900,10 @@ const MAPA=[
   ['Preguntar al técnico','Campo → Técnico',"SUB.campo='tecnico';ir('campo')"],
   ['Fincas arrendadas y la renta que pago','Ficha de la finca → «La llevo arrendada»; se paga en Jornales → Qué debo',"SUB.jornales='cuentas';ir('jornales')"],
   ['Reuniones y citas (riego, cooperativa, charlas…)','Campo → Agenda, o el botón +',"SUB.campo='reun';ir('campo')"],
-  ['Almacén de productos y envases vacíos','Campo → Almacén',"SUB.campo='almacen';ir('campo')"],
+  ['Almacén de productos y envases vacíos','Campo → Curar → Almacén',"SUB.campo='almacen';ir('campo')"],
+  ['Dosis que te dijeron en la tienda («4 l en la cuba de 2.000»)','Campo → Curar → Almacén → toca el producto',"SUB.campo='almacen';ir('campo')"],
+  ['Cubas que gastas en cada finca','Más → Fincas → toca la finca',"SUB.mas='fincas';ir('mas')"],
+  ['Abonar al suelo con lluvia (meses de abonar)','Te avisa en Inicio; los meses en Más → Ajustes',"SUB.mas='ajustes';ir('mas')"],
   ['Plazos (PAC, seguro, renta…), devolución del gasóleo y resumen para la renta','Cuentas → Papeles y plazos',"SUB.cuentas='papeles';ir('cuentas')"],
   ['Coste por kilo de cada partida, año a año','Cuentas → Cosecha, al final',"SUB.cuentas='cosecha';ir('cuentas')"],
   ['Comparar campañas por finca','Cuentas → Cosecha, al final',"SUB.cuentas='cosecha';ir('cuentas')"],
@@ -1911,12 +1918,14 @@ const MAPA=[
   ['Cronómetro de la jornada (con almuerzo)','Inicio → «Empezar la jornada»',"ir('inicio')"],
   ['Cuándo empezar a recoger: madurez y análisis de rendimiento','Campo → Muestras',"SUB.campo='muestras';ir('campo')"],
   ['Cosecha esperada (aforo)','Campo → Muestras → Aforo',"abrirAforo()"],
+  ['¿Compensa recoger una finca (o el suelo)?','Al hacer el aforo, o en Cuentas → Cosecha tocando la finca',"SUB.cuentas='cosecha';ir('cuentas')"],
+  ['Análisis de suelo y foliar (y cuándo toca)','Campo → Muestras → Análisis',"abrirAnalisis('foliar')"],
   ['Algodoncillo: muestreo y umbral','Campo → Muestras → Algodoncillo',"abrirAlgodoncillo()"],
   ['DAT para llevar la aceituna a la almazara','Cuentas → Cosecha → «DAT para la almazara»',"abrirDAT()"],
-  ['Cuaderno de campo (modelo Junta)','Campo → Curaciones → «Cuaderno de campo»',"abrirCuaderno()"],
-  ['Cubas estándar (tus mezclas de siempre)','Campo → Curaciones, al final',"SUB.campo='trat';ir('campo')"],
-  ['Lo que llevaba cada atomizador','Campo → Curaciones',"SUB.campo='trat';ir('campo')"],
-  ['Calcular dosis y regular el atomizador','Campo → Calcular dosis',"SUB.campo='calc';ir('campo')"],
+  ['Cuaderno de campo (modelo Junta)','Campo → Curar → Curaciones → «Cuaderno de campo»',"abrirCuaderno()"],
+  ['Cubas estándar (tus mezclas de siempre)','Campo → Curar → Curaciones, al final',"SUB.campo='trat';ir('campo')"],
+  ['Lo que llevaba cada atomizador','Campo → Curar → Curaciones',"SUB.campo='trat';ir('campo')"],
+  ['Calcular dosis y regular el atomizador','Campo → Curar → Calcular dosis',"SUB.campo='calc';ir('campo')"],
   ['Notas y fotos del campo','Campo → Notas',"SUB.campo='notas';ir('campo')"],
   ['Tareas pendientes y hechas','Campo → Agenda',"SUB.campo='tareas';ir('campo')"],
   ['Gastos, cobros y facturas','Cuentas',"SUB.cuentas='gastos';ir('cuentas')"],
@@ -2094,6 +2103,23 @@ function vCuentas(){
 }
 
 // ===== Vistas =====
+// Rutas escritas en los textos («Cuentas → Cosecha») se vuelven enlaces que llevan allí
+const RUTA_V={Inicio:'inicio',Cuentas:'cuentas',Jornales:'jornales',Campo:'campo',Tiempo:'tiempo','Más':'mas'};
+const RUTA_S={cuentas:{Gastos:'gastos',Cobros:'ingresos',Cosecha:'cosecha','Papeles y plazos':'papeles',Facturas:'facturas',Precios:'precios'},
+  campo:{'Qué toca':'labores',Agenda:'tareas',Curar:'curar',Muestras:'muestras','Técnico':'tecnico',Notas:'notas',Curaciones:'trat','Calcular dosis':'calc',Dosis:'calc','Almacén':'almacen'},
+  jornales:{Libreta:'libreta','Qué debo':'cuentas','Gente y empresas':'trab'},
+  mas:{Fincas:'fincas',Riego:'riego','Máquinas':'maq',Ajustes:'ajustes','¿Dónde está?':'ayuda'}};
+const RUTA_RE=/(Inicio|Cuentas|Jornales|Campo|Tiempo|Más)((?: → (?:Papeles y plazos|Gente y empresas|Calcular dosis|Qué toca|Qué debo|¿Dónde está\?|[A-ZÁÉÍÓÚ][a-záéíóúñ]+))+)/g;
+function irRuta(t){ const p=t.split(' → '), v=RUTA_V[p[0]]; if(!v) return; let sub=null;
+  p.slice(1).forEach(x=>{ const k=RUTA_S[v]?.[x]; if(k) sub=k; });
+  if($('#dlg').open) $('#dlg').close(); if(sub){ if(v==='campo'&&['trat','calc','almacen'].includes(sub)){ SUB.campo='curar'; SUB.curar=sub; } else SUB[v]=sub; } ir(v); }
+function enlazarRutas(root){ if(!root||(VIEW==='mas'&&SUB.mas==='ayuda'&&root.id==='view')) return;
+  const w=document.createTreeWalker(root,NodeFilter.SHOW_TEXT,{acceptNode:n=>{ RUTA_RE.lastIndex=0; if(!n.nodeValue.includes('→')||!RUTA_RE.test(n.nodeValue)) return NodeFilter.FILTER_REJECT; const e=n.parentElement; return e&&!e.closest('a,button,.lnk,input,textarea,select,option,label.chk,.tabs2,#nav,[data-sub]')?NodeFilter.FILTER_ACCEPT:NodeFilter.FILTER_REJECT; }});
+  const L=[]; while(w.nextNode()) L.push(w.currentNode);
+  L.forEach(n=>{ const f=document.createDocumentFragment(), t=n.nodeValue; let i=0; RUTA_RE.lastIndex=0; let m;
+    while((m=RUTA_RE.exec(t))){ if(!RUTA_S[RUTA_V[m[1]]]?.[m[2].split(' → ')[1]]&&m[1]!=='Inicio') continue; const r=m[0]; f.append(t.slice(i,m.index)); const a=document.createElement('span'); a.className='lnk'; a.textContent=r; a.setAttribute('role','link'); a.onclick=e=>{ e.stopPropagation(); e.preventDefault(); irRuta(r); }; f.append(a); i=m.index+m[0].length; }
+    if(i){ f.append(t.slice(i)); n.replaceWith(f); } }); }
+let ENL_PEND=false; document.addEventListener('DOMContentLoaded',()=>{ const fr=document.getElementById('frm'); if(fr) new MutationObserver(()=>{ if(ENL_PEND) return; ENL_PEND=true; queueMicrotask(()=>{ ENL_PEND=false; enlazarRutas(fr); }); }).observe(fr,{childList:true,subtree:true}); });
 function ir(v){ APUNTAR_FINCA = v==='ficha' ? SUB.ficha : null; VIEW=v; document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('on',b.dataset.v===v)); render(); scrollTo(0,0); }
 document.querySelectorAll('#nav button').forEach(b=>b.onclick=()=>ir(b.dataset.v));
 function fab(k){ const f=$('#fab'); if(!k){f.classList.add('hidden');return;} f.classList.remove('hidden'); f.onclick= typeof k==='function' ? k : ()=>abrir(k); }
@@ -2107,6 +2133,7 @@ function render(){
   document.querySelectorAll('[data-sub]').forEach(el=>el.onclick=()=>{ const [v,s]=el.dataset.sub.split(':'); SUB[v]=s; render(); });
   document.querySelectorAll('[data-go]').forEach(el=>el.onclick=()=>ir(el.dataset.go));
   document.querySelectorAll('[data-filt]').forEach(el=>el.onclick=()=>{ SUB[el.dataset.filt]=el.dataset.v; render(); });
+  enlazarRutas($('#view'));
 }
 
 function vInicio(){
@@ -2168,9 +2195,12 @@ function vIngresos(){
 }
 function vCampo(){
   if(SUB.campo==='reun') SUB.campo='tareas';
-  const s=SUB.campo||'labores';
+  // Curaciones, Calcular dosis y Almacén van juntas en «Curar»
+  if(['trat','calc','almacen'].includes(SUB.campo)){ SUB.curar=SUB.campo; SUB.campo='curar'; }
+  const s0=SUB.campo||'labores', cu=SUB.curar||'trat', s=s0==='curar'?cu:s0;
   fab(s==='trat'?()=>abrirAplicacion():s==='notas'?'notas':'tareas');
-  const tabs=`<div class="tabs2">${[['labores','Qué toca'],['muestras','Muestras'],['tecnico','Técnico'],['tareas','Agenda'],['notas','Notas'],['trat','Curaciones'],['almacen','Almacén'],['calc','Calcular dosis']].filter(([k])=>visto('campo:'+k)).map(([k,t])=>`<button data-sub="campo:${k}" class="${s===k?'on':''}">${t}</button>`).join('')}</div>`;
+  const tabs=`<div class="tabs2">${[['labores','Qué toca'],['tareas','Agenda'],['curar','Curar'],['muestras','Muestras'],['tecnico','Técnico'],['notas','Notas']].filter(([k])=>visto('campo:'+k)).map(([k,t])=>`<button data-sub="campo:${k}" class="${s0===k?'on':''}">${t}</button>`).join('')}</div>`
+    +(s0==='curar'?`<div class="chips" style="margin:-4px 0 10px">${[['trat','💧 Curaciones'],['calc','🧮 Dosis'],['almacen','📦 Almacén']].filter(([k])=>k==='trat'||visto('campo:'+k)).map(([k,t])=>`<button type="button" class="chip ${cu===k?"on":""}" style="font-size:13px;padding:6px 10px" onclick="SUB.curar='${k}';render()">${t}</button>`).join('')}</div>`:'');
   if(s==='labores') return tabs+vLabores();
   if(s==='muestras') return tabs+vMuestras();
   if(s==='almacen'){ fab('almacen'); return tabs+vAlmacen(); }
@@ -3179,7 +3209,7 @@ setInterval(()=>{ if(crono()) pintarCrono(); }, 30000);
 
 // ===== Muestras: madurez, rendimiento, aforo y algodoncillo =====
 const CLASES_IM=[['Verde intenso','#2e6b1f'],['Verde amarillento','#9bb53a'],['Manchas rojizas (< mitad)','#b8862e'],['Morada (> mitad)','#7a2f5a'],['Negra · pulpa blanca','#2a2030'],['Negra · pulpa morada < mitad','#3d1f3a'],['Negra · morada casi al hueso','#4a1640'],['Negra · morada hasta el hueso','#33002a']];
-const TIPOS_M={madurez:'Índice de madurez',rendimiento:'Análisis de rendimiento',aforo:'Aforo (cosecha esperada)',algodoncillo:'Algodoncillo'};
+const TIPOS_M={madurez:'Índice de madurez',rendimiento:'Análisis de rendimiento',aforo:'Aforo (cosecha esperada)',algodoncillo:'Algodoncillo',foliar:'Análisis foliar',suelo:'Análisis de suelo'};
 function muestras(tipo,fid){ return D.muestras.filter(m=>m.tipo===tipo&&(!fid||m.finca_id===fid)).sort((a,b)=>a.fecha.localeCompare(b.fecha)||(a.created_at||'').localeCompare(b.created_at||'')); }
 function ultMuestra(tipo,fid){ const l=muestras(tipo,fid); return l[l.length-1]; }
 function chipsFinca(name,def){ const fs=opsFincas(false).slice(1); const v=def||APUNTAR_FINCA||ULT.m_finca||fs[0]?.[0]||''; return `<span class="clab">Finca</span><div class="chips" data-chips="${name}">${fs.map(([id,t])=>`<button type="button" class="chip ${id===v?'on':''}" data-val="${id}">${esc(t)}</button>`).join('')}</div><input type="hidden" name="${name}" value="${esc(v)}">`; }
@@ -3270,20 +3300,114 @@ function estadoRend(fid){ const l=muestras('rendimiento',fid).filter(m=>m.fecha>
 function vMuestras(){
   fab(null); const fs=D.fincas.filter(f=>f.activa), [ini]=campRango(CAMP);
   const fila=f=>{ const im=muestras('madurez',f.id).filter(m=>m.fecha>=ini), rd=muestras('rendimiento',f.id).filter(m=>m.fecha>=ini), af=ultMuestra('aforo',f.id), ag=ultMuestra('algodoncillo',f.id), er=estadoRend(f.id);
-    const uIm=im[im.length-1], uRd=rd[rd.length-1];
+    const uIm=im[im.length-1], uRd=rd[rd.length-1], aF=ultMuestra('foliar',f.id), aS=ultMuestra('suelo',f.id);
+    const anaTxt=(m,t)=>{ if(!m) return `<span class="mut">${t}: —</span>`; const L=(m.datos?.valores||[]).map(v=>nivelAna(m.tipo,v)).filter(Boolean), malos=L.filter(n=>n.c!=='g').length; return `<a href="#" onclick="event.preventDefault();verAnalisis('${m.id}')">${t} ${m.fecha.slice(0,4)}</a>${malos?` <span class="neg">${malos} a vigilar</span>`:L.length?' <span class="pos">bien</span>':''}`; };
     return `<div class="lab"><div class="row" style="flex-wrap:nowrap"><b style="flex:1">${esc(f.nombre)}</b>${f.algodoncillo?'<span class="tag">algodoncillo</span>':''}</div>
       <div class="grid2" style="margin-top:4px">
       <div><span class="mut">Madurez</span><br>${uIm?`<b>${num(uIm.valor,2)}</b> <span class="mut">${fFecha(uIm.fecha)}</span>${sparkSerie(im.map(m=>+m.valor))}`:'<span class="mut">—</span>'}</div>
       <div><span class="mut">Rendimiento</span><br>${uRd?`<b>${num(uRd.valor,1)} %</b>${uRd.datos?.seco?` <span class="mut">(${num(uRd.datos.seco,1)} s/seco)</span>`:''} <span class="mut">${fFecha(uRd.fecha)}</span>${er?`<div class="${er.para?'neg':'pos'}" style="font-size:12px">${er.para?'ha dejado de subir':`sube ${num(er.dif,1)} puntos`}</div>`:''}${sparkSerie(rd.map(m=>+(m.datos?.seco??m.valor)))}`:'<span class="mut">—</span>'}</div>
       <div><span class="mut">Aforo</span><br>${af?`<b>${af.datos?.estimado?num(af.datos.estimado)+' kg':num(af.valor,1)+' kg/olivo'}</b> <span class="mut">${fFecha(af.fecha)}</span>`:'<span class="mut">—</span>'}</div>
-      <div><span class="mut">Algodoncillo</span><br>${ag?`<b class="${ag.datos?.supera?'neg':''}">${ag.valor!=null?num(ag.valor,2)+' ninfas/racimo':(ag.datos?.pct_algodon??'')+' %'}</b> <span class="mut">${fFecha(ag.fecha)}</span>`:'<span class="mut">—</span>'}</div></div></div>`; };
+      <div><span class="mut">Algodoncillo</span><br>${ag?`<b class="${ag.datos?.supera?'neg':''}">${ag.valor!=null?num(ag.valor,2)+' ninfas/racimo':(ag.datos?.pct_algodon??'')+' %'}</b> <span class="mut">${fFecha(ag.fecha)}</span>`:'<span class="mut">—</span>'}</div></div><div style="margin-top:6px;font-size:13px">${anaTxt(aF,'Foliar')} · ${anaTxt(aS,'Suelo')}</div></div>`; };
   const ult=[...D.muestras].sort((a,b)=>(b.fecha+(b.created_at||'')).localeCompare(a.fecha+(a.created_at||''))).slice(0,12);
-  return `<div class="apuntar" style="margin-bottom:12px">${[['Madurez','🫒','abrirMadurez()'],['Rendimiento','🧪','abrirRendimiento()'],['Aforo','⚖️','abrirAforo()'],['Algodoncillo','🐛','abrirAlgodoncillo()']].map(([t,i,fn])=>`<button type="button" onclick="${fn}"><span>${i}</span>${t}</button>`).join('')}</div>
+  return `<div class="apuntar" style="margin-bottom:12px">${[['Madurez','🫒','abrirMadurez()'],['Rendimiento','🧪','abrirRendimiento()'],['Aforo','⚖️','abrirAforo()'],['Algodoncillo','🐛','abrirAlgodoncillo()'],['Análisis','📄',"abrirAnalisis('foliar')"]].map(([t,i,fn])=>`<button type="button" onclick="${fn}"><span>${i}</span>${t}</button>`).join('')}</div>
     <div class="card"><h2>Por finca · ${esc(CAMP)}</h2>${fs.map(fila).join('')||'<p class="mut">Da de alta tus fincas.</p>'}
       <p class="mut">Madurez: en Picual, el punto para calidad está hacia 3,5. Rendimiento: cuando entre dos análisis seguidos el graso sobre seco sube menos de 0,3 puntos, ya no gana aceite y la aceituna solo pierde calidad y se cae.</p></div>
-    ${ult.length?`<div class="card"><h2>Últimas muestras</h2><table>${ult.map(m=>`<tr class="click" onclick="borrarMuestra('${m.id}')"><td>${esc(TIPOS_M[m.tipo]||m.tipo)}<div class="mut">${fFecha(m.fecha)} · ${esc(fincaNom(m.finca_id))}${m.notas?' · '+esc(m.notas):''}</div></td><td class="n">${m.valor!=null?num(m.valor,2):''}</td></tr>`).join('')}</table><p class="mut">Toca una para borrarla.</p></div>`:''}
+    ${ult.length?`<div class="card"><h2>Últimas muestras</h2><table>${ult.map(m=>`<tr class="click" onclick="${['foliar','suelo'].includes(m.tipo)?`verAnalisis('${m.id}')`:`borrarMuestra('${m.id}')`}"><td>${esc(TIPOS_M[m.tipo]||m.tipo)}<div class="mut">${fFecha(m.fecha)} · ${esc(fincaNom(m.finca_id))}${m.notas?' · '+esc(m.notas):''}</div></td><td class="n">${m.valor!=null?num(m.valor,2):''}</td></tr>`).join('')}</table><p class="mut">Toca una para borrarla.</p></div>`:''}
     <div class="card"><h2>Fincas con algodoncillo</h2><p class="mut">Las que suelen tenerlo: te aviso en primavera para muestrear.</p><div class="chips">${fs.map(f=>`<button class="chip ${f.algodoncillo?'on':''}" onclick="marcarAlg('${f.id}',${!f.algodoncillo})">${esc(f.nombre)}</button>`).join('')}</div></div>`;
 }
+// ===== Análisis de suelo y foliar =====
+// Foliar (hoja de julio): niveles críticos de C. Navarro (CIFA Alameda del Obispo), Vida Rural, oct. 2003.
+const REF_FOLIAR={N:{u:'%',def:1.4,ade:[1.5,2.0],n:'Nitrógeno'},P:{u:'%',def:0.05,ade:[0.1,0.3],n:'Fósforo'},K:{u:'%',def:0.4,ade:[0.8,null],n:'Potasio'},Ca:{u:'%',def:0.3,ade:[1,null],n:'Calcio'},Mg:{u:'%',def:0.08,ade:[0.1,null],n:'Magnesio'},
+  B:{u:'ppm',def:14,ade:[19,150],tox:185,n:'Boro'},Mn:{u:'ppm',ade:[20,null],n:'Manganeso'},Zn:{u:'ppm',ade:[10,null],n:'Cinc'},Cu:{u:'ppm',ade:[4,null],n:'Cobre'},Na:{u:'%',tox:0.2,n:'Sodio'},Cl:{u:'%',tox:0.5,n:'Cloro'},Fe:{u:'ppm',n:'Hierro',nota:'El análisis de hoja no sirve para ver la falta de hierro: se ve por la clorosis (hojas amarillas con nervios verdes).'}};
+// Suelo: rangos orientativos generales (no son de una tabla oficial para olivar): manda la interpretación del laboratorio.
+const REF_SUELO={pH:{u:'',r:[[6.5,'ácido para el olivo','a'],[8.5,'bien para el olivo','g'],[99,'muy básico: vigila hierro y zinc','a']],n:'pH'},
+  caliza_activa:{u:'%',r:[[5,'baja','g'],[10,'media','a'],[999,'alta: riesgo de clorosis férrica','r']],n:'Caliza activa'},
+  MO:{u:'%',r:[[1,'baja','a'],[2,'normal','g'],[999,'alta','g']],n:'Materia orgánica'},
+  P:{u:'ppm',r:[[10,'bajo','a'],[20,'medio','g'],[99999,'alto','g']],n:'Fósforo (Olsen)'},
+  K:{u:'ppm',r:[[150,'bajo','a'],[300,'medio','g'],[99999,'alto','g']],n:'Potasio'},
+  CE:{u:'dS/m',r:[[2,'sin problema de sales','g'],[4,'algo salino','a'],[999,'salino','r']],n:'Conductividad'}};
+const ANA_CAMPOS={foliar:['N','P','K','Ca','Mg','B','Fe','Mn','Zn','Cu'], suelo:['pH','MO','caliza_activa','caliza_total','P','K','Mg','CE','textura']};
+const ANA_NOM={caliza_total:'Caliza total',textura:'Textura',Mg:'Magnesio',CIC:'CIC',arcilla:'Arcilla',limo:'Limo',arena:'Arena'};
+function aUnidad(v,u,ref){ v=Number(v); if(!isFinite(v)) return null; u=(u||'').toLowerCase().replace(/\s/g,'');
+  if(ref==='%'&&/g\/kg/.test(u)) return v/10; if(ref==='%'&&/(ppm|mg\/kg)/.test(u)) return v/10000; if(ref==='ppm'&&u==='%') return v*10000;
+  if(ref==='ppm'&&/meq/.test(u)) return null; return v; }
+function nivelAna(tipo,v){ if(!v||v.valor==null) return null;
+  if(tipo==='foliar'){ const R=REF_FOLIAR[v.clave]; if(!R||R.ade==null&&R.tox==null) return null; const x=aUnidad(v.valor,v.unidad,R.u); if(x==null) return null;
+    if(R.tox!=null&&x>=R.tox) return {n:'tóxico',c:'r'}; if(R.def!=null&&x<=R.def) return {n:'deficiente',c:'r'}; if(R.ade){ if(x<R.ade[0]) return {n:'bajo',c:'a'}; if(R.ade[1]!=null&&x>R.ade[1]) return {n:'alto',c:'a'}; return {n:'adecuado',c:'g'}; } return {n:'normal',c:'g'}; }
+  const R=REF_SUELO[v.clave]; if(!R) return null; let x=Number(v.valor); if(v.clave==='K'&&/meq/i.test(v.unidad||'')) x=x*391; if(v.clave==='MO'&&/g\/kg/i.test(v.unidad||'')) x=x/10;
+  const t=R.r.find(([lim])=>x<lim); return t?{n:t[1],c:t[2]}:null; }
+function refTxt(tipo,clave){ if(tipo==='foliar'){ const R=REF_FOLIAR[clave]; if(!R) return ''; if(R.nota) return R.nota; const a=R.ade?`adecuado ${R.ade[1]!=null?`${num(R.ade[0])}–${num(R.ade[1])}`:`> ${num(R.ade[0])}`} ${R.u}`:''; return [a,R.tox!=null?`tóxico ≥ ${num(R.tox)} ${R.u}`:''].filter(Boolean).join(' · '); }
+  const R=REF_SUELO[clave]; return R?'orientativo general':''; }
+function consejoAna(tipo,vals){ const n=c=>{ const v=vals.find(x=>x.clave===c); return v?nivelAna(tipo,v)?.n:null; }, out=[];
+  if(tipo==='foliar'){
+    if(['bajo','deficiente'].includes(n('N'))) out.push('Nitrógeno por debajo de 1,5 %: el olivo responde a abonar con nitrógeno (al suelo con lluvia, o foliar con urea).');
+    else if(n('N')==='adecuado'||n('N')==='alto') out.push('Nitrógeno bien: en los ensayos de olivar de secano andaluz, por encima de 1,5 % en julio no se nota abonar más nitrógeno. Puedes ahorrar o reducir.');
+    if(['bajo','deficiente'].includes(n('K'))) out.push('Potasio bajo (menos de 0,8 %): es lo más típico en secano tras años de mucha cosecha o sequía. Potasio foliar en primavera y otoño, o al suelo.');
+    if(['bajo','deficiente'].includes(n('B'))) out.push('Boro bajo: un foliar de boro antes de la flor ayuda al cuajado.');
+    if(n('B')==='tóxico') out.push('Boro en exceso: no eches más boro.');
+    if(['bajo','deficiente'].includes(n('P'))) out.push('Fósforo bajo: raro en olivar; repite el análisis antes de abonar con fósforo.');
+    if(!out.length) out.push('Nada por debajo de lo adecuado: mantén el abonado, sin pasarte.'); }
+  else {
+    if(/alta/.test(n('caliza_activa')||'')) out.push('Mucha caliza activa: el hierro se bloquea y salen olivos amarillos (clorosis). Si lo ves, quelatos de hierro al suelo en primavera.');
+    if(n('MO')==='baja') out.push('Poca materia orgánica: la cubierta vegetal y picar la poda en la calle la suben poco a poco.');
+    if(n('K')==='bajo') out.push('Potasio del suelo bajo: confírmalo con el foliar de julio antes de echar potasa.');
+    if(/salino/.test(n('CE')||'')) out.push('Hay sales: ojo con el agua de riego y con abonos que llevan cloruro.');
+    out.push('El de suelo dice cómo es la tierra; para decidir el abonado de cada año manda el foliar de julio.'); }
+  return out; }
+function abrirAnalisis(tipo='foliar'){
+  $('#frm').oninput=null; $('#frm').onchange=null; $('#frm').onsubmit=e=>e.preventDefault();
+  const como=tipo==='foliar'?`<b>Cuándo:</b> en julio, cada año.<br><b>Cómo:</b> recorre la finca en zigzag (sin las lindes) y en cada olivo coge hojas enteras, con su rabito, de la mitad del brote de este año, de las cuatro caras del árbol. Sin chupones ni hojas raras. En sobre de papel y a la nevera hasta el laboratorio.`
+    :`<b>Cuándo:</b> cada ${AJ.suelo_anos||5} años; en septiembre-octubre: si abonas al suelo en enero-marzo, para entonces han pasado más de 6 meses. Tras la recogida vale solo si aún no has abonado (los foliares no cuentan).<br><b>Cómo:</b> 10-15 hoyos repartidos por la finca, bajo la copa (donde están las raíces), de 0 a 30 cm y aparte de 30 a 60 cm. Mezcla cada profundidad y lleva 1 kg de cada una.`;
+  $('#frm').innerHTML=`<h3>Análisis ${tipo==='foliar'?'foliar (hoja)':'de suelo'}</h3>
+    <div class="chips"><button type="button" class="chip ${tipo==='foliar'?'on':''}" onclick="abrirAnalisis('foliar')">Foliar</button><button type="button" class="chip ${tipo==='suelo'?'on':''}" onclick="abrirAnalisis('suelo')">Suelo</button></div>
+    <p class="mut">${como}</p>
+    <button type="button" class="btn" style="width:100%;margin-bottom:8px" id="anFoto">📷 Hacer foto al informe del laboratorio</button>
+    <button type="button" class="btn sec" style="width:100%" id="anMano">Escribir los valores a mano</button>
+    <div class="row acciones" style="justify-content:flex-end"><button type="button" class="btn sec" onclick="$('#dlg').close()">Cancelar</button></div>`;
+  $('#anMano').onclick=()=>revisarAnalisis({tipo,valores:[]},null,null);
+  $('#anFoto').onclick=()=>{ if(!navigator.onLine){ toast('Para leer el informe necesitas cobertura'); return; } const i=document.createElement('input'); i.type='file'; i.accept='image/*,application/pdf'; i.onchange=()=>{ if(i.files[0]) leerAnalisis(i.files[0],tipo); }; i.click(); };
+  if(!$('#dlg').open) $('#dlg').showModal(); }
+async function leerAnalisis(file,tipo){
+  $('#frm').innerHTML=`<h3>Leyendo el análisis…</h3><p class="mut">Tarda entre 10 y 30 segundos.</p><div class="bar"><i style="width:100%;animation:none"></i></div>`;
+  try{ const {blob,mime}=await prepararArchivo(file); const data=await aB64(blob);
+    const {data:res,error}=await sb.functions.invoke('leer-factura',{body:{data,mime,tipo:'analisis'}});
+    if(error){ let m=error.message; try{ const j=await error.context.json(); m=j.error||m; }catch(e){} throw new Error(m); }
+    if(!res?.datos) throw new Error(res?.error||'No se pudo leer');
+    const d=res.datos; if(!['foliar','suelo'].includes(d.tipo)) d.tipo=tipo; revisarAnalisis(d,blob,mime);
+  }catch(e){ toast('No se pudo leer: '+e.message); abrirAnalisis(tipo); } }
+function revisarAnalisis(d,blob,mime){ const tipo=d.tipo, vals=[...(d.valores||[])];
+  ANA_CAMPOS[tipo].forEach(c=>{ if(!vals.some(v=>v.clave===c)) vals.push({clave:c,valor:null,unidad:tipo==='foliar'?(REF_FOLIAR[c]?.u||''):(REF_SUELO[c]?.u||(c==='caliza_total'?'%':'')),manual:1}); });
+  const nom=v=>(tipo==='foliar'?REF_FOLIAR[v.clave]?.n:REF_SUELO[v.clave]?.n)||ANA_NOM[v.clave]||v.nombre||v.clave;
+  const fecha=/^\d{4}-\d{2}-\d{2}$/.test(d.fecha||'')?d.fecha:hoy();
+  $('#frm').innerHTML=`<h3>Análisis ${tipo==='foliar'?'foliar':'de suelo'}${blob?' leído':''}</h3>${blob?'<p class="mut">Repasa los valores con el papel: la lectura puede fallar.</p>':''}
+    ${chipsFinca('m_finca')}
+    <div class="grid2"><label>Día de la muestra<input type="date" name="fecha" value="${fecha}"></label><label>Laboratorio<input name="lab" value="${esc(d.laboratorio||'')}"></label></div>
+    ${tipo==='suelo'?`<label>Profundidad<input name="prof" value="${esc(d.profundidad||'0-30 cm')}"></label>`:''}
+    <table id="anT">${vals.map((v,i)=>`<tr data-i="${i}"><td>${esc(nom(v))}<div class="mut" style="font-size:12px">${esc(refTxt(tipo,v.clave))}</div></td>
+      <td style="width:38%"><div class="row" style="flex-wrap:nowrap;gap:4px">${v.clave==='textura'?`<input data-v="${i}" value="${esc(v.texto||'')}" style="margin:0">`:`<input data-v="${i}" inputmode="decimal" value="${v.valor!=null?String(v.valor).replace('.',','):''}" style="margin:0;width:70px"><span class="mut" style="font-size:12px">${esc(v.unidad||'')}</span>`}</div><div data-n="${i}" style="font-size:12px"></div></td></tr>`).join('')}</table>
+    <div id="anC" class="aviso" style="margin:8px 0"></div>
+    <label>Notas${d.observaciones?' (del laboratorio)':''}<input name="notas" value="${esc(d.observaciones||'')}"></label>
+    <div class="row acciones" style="justify-content:flex-end"><button type="button" class="btn sec" onclick="$('#dlg').close()">Cancelar</button><button class="btn" id="fOk">Guardar</button></div>`;
+  const F=$('#frm'); activarChips(F);
+  const leer=()=>vals.map((v,i)=>{ const e=F.querySelector(`[data-v="${i}"]`); return v.clave==='textura'?{...v,texto:e.value.trim()||null}:{...v,valor:pn(e.value)}; });
+  const pinta=()=>{ const L=leer(); L.forEach((v,i)=>{ const n=nivelAna(tipo,v), el=F.querySelector(`[data-n="${i}"]`); el.innerHTML=n?`<span class="dot ${n.c}"></span>${esc(n.n)}`:(v.nivel_lab?`<span class="mut">lab: ${esc(v.nivel_lab)}</span>`:''); if(n&&v.nivel_lab) el.innerHTML+=` <span class="mut">· lab: ${esc(v.nivel_lab)}</span>`; });
+    const c=consejoAna(tipo,L.filter(v=>v.valor!=null)); $('#anC').innerHTML=L.some(v=>v.valor!=null)?c.map(x=>'• '+esc(x)).join('<br>'):'Pon los valores que traiga el informe; los que no vengan, déjalos vacíos.'; return L; };
+  F.oninput=pinta; pinta();
+  F.onsubmit=async e=>{ e.preventDefault(); const L=pinta().filter(v=>v.valor!=null||v.texto); if(!L.length){ toast('Pon algún valor'); return; }
+    let foto=null; if(blob){ try{ const {data:{user}}=await sb.auth.getUser(); const path=`${user.id}/analisis-${nuevoId()}.${mime==='application/pdf'?'pdf':'jpg'}`; const up=await sb.storage.from('olv-facturas').upload(path,blob,{contentType:mime}); if(!up.error) foto=path; }catch(err){} }
+    guardarMuestra(tipo,null,{valores:L.map(({manual,...v})=>v),laboratorio:F.lab.value.trim()||null,profundidad:F.prof?.value.trim()||null,foto_path:foto}); };
+  if(!$('#dlg').open) $('#dlg').showModal(); }
+function verAnalisis(id){ const m=D.muestras.find(x=>x.id===id); if(!m) return; const tipo=m.tipo, L=m.datos?.valores||[];
+  const nom=v=>(tipo==='foliar'?REF_FOLIAR[v.clave]?.n:REF_SUELO[v.clave]?.n)||ANA_NOM[v.clave]||v.nombre||v.clave;
+  $('#frm').oninput=null; $('#frm').onchange=null; $('#frm').onsubmit=e=>{ e.preventDefault(); $('#dlg').close(); };
+  $('#frm').innerHTML=`<h3>${esc(TIPOS_M[tipo])} · ${esc(fincaNom(m.finca_id))}</h3><p class="mut">${fFecha(m.fecha)}${m.datos?.laboratorio?' · '+esc(m.datos.laboratorio):''}${m.datos?.profundidad?' · '+esc(m.datos.profundidad):''}</p>
+    <table>${L.map(v=>{ const n=nivelAna(tipo,v); return `<tr><td>${esc(nom(v))}<div class="mut" style="font-size:12px">${esc(refTxt(tipo,v.clave))}</div></td><td class="n"><b>${v.valor!=null?num(v.valor,2):esc(v.texto||'')}</b> <span class="mut">${esc(v.unidad||'')}</span><div style="font-size:12px">${n?`<span class="dot ${n.c}"></span>${esc(n.n)}`:''}${v.nivel_lab?` <span class="mut">lab: ${esc(v.nivel_lab)}</span>`:''}</div></td></tr>`; }).join('')}</table>
+    <div class="aviso" style="margin:8px 0">${consejoAna(tipo,L.filter(v=>v.valor!=null)).map(x=>'• '+esc(x)).join('<br>')}</div>
+    ${m.notas?`<p class="mut">${esc(m.notas)}</p>`:''}
+    <p class="mut" style="font-size:12px">${tipo==='foliar'?'Referencias foliares: C. Navarro (CIFA Alameda del Obispo), Vida Rural 2003.':'Rangos de suelo orientativos generales: si no cuadran con los del laboratorio, hazle caso al laboratorio.'}</p>
+    <div class="row acciones" style="justify-content:space-between"><div><button type="button" class="btn del" onclick="$('#dlg').close();borrarMuestra('${m.id}')">Borrar</button>${m.datos?.foto_path?` <button type="button" class="btn sec" onclick="verFotoAna('${m.id}')">Ver informe</button>`:''}</div><button class="btn">Cerrar</button></div>`;
+  $('#dlg').showModal(); }
+async function verFotoAna(id){ const m=D.muestras.find(x=>x.id===id); const {data}=await sb.storage.from('olv-facturas').createSignedUrl(m.datos.foto_path,600); if(data?.signedUrl) window.open(data.signedUrl,'_blank'); else toast('No se pudo abrir'); }
 async function marcarAlg(fid,v){ const {error}=await sb.from('olv_fincas').update({algodoncillo:v}).eq('id',fid); if(error){ if(!sinRed(error)) toast('Error: '+error.message); return; } await cargar('fincas'); render(); }
 async function borrarMuestra(id){ if(!confirm('¿Borrar esta muestra?')) return; const {error}=await sb.from('olv_muestras').delete().eq('id',id); if(error){ if(!sinRed(error)) toast('Error: '+error.message); return; } await cargar('muestras'); render(); }
 // ===== ¿Compensa recoger? Lo que vale la aceituna del olivo frente a lo que cuesta cogerla =====
@@ -3341,6 +3465,11 @@ function avisosMuestras(h){
     fs.forEach(f=>{ const u=ultMuestra('madurez',f.id); if(u&&difDias(u.fecha,h)<=14&&Number(u.valor)>=3&&Number(u.valor)<=4.2) out.push({c:'',t:`<b>${esc(f.nombre)}</b>: índice de madurez ${num(u.valor,2)}, en el punto o casi (≈3,5)`,ord:24,fn:"SUB.campo='muestras';ir('campo')"});
       const er=estadoRend(f.id); if(er&&er.para) out.push({c:'',t:`<b>${esc(f.nombre)}</b>: el rendimiento ha dejado de subir. Ya no gana aceite esperando`,ord:24,fn:"SUB.campo='muestras';ir('campo')"}); });
   }
+  // análisis: suelo cada N años (septiembre-octubre), foliar en julio
+  if(fs.length){ const mes=+h.slice(5,7), anos=AJ.suelo_anos||5;
+    if([9,10].includes(mes)){ const toca=fs.filter(f=>{ const u=ultMuestra('suelo',f.id); return !u||difDias(u.fecha,h)>anos*365-60; });
+      if(toca.length) out.push({c:'',t:`Toca <b>análisis de suelo</b> en ${toca.map(f=>{ const u=ultMuestra('suelo',f.id); return `${esc(f.nombre)}${u?` (el último en ${u.fecha.slice(0,4)})`:' (nunca)'}`; }).join(', ')}. Se hace cada ${anos} años; ahora es buen momento, a más de 6 meses del abonado de invierno`,ord:30,fn:"abrirAnalisis('suelo')"}); }
+    if(mes===6&&h.slice(8)>='20'){ const sin=fs.filter(f=>{ const u=ultMuestra('foliar',f.id); return !u||u.fecha<`${h.slice(0,4)}-06-01`; }); if(sin.length) out.push({c:'',t:`En julio toca coger hojas para el <b>análisis foliar</b> (${sin.map(f=>esc(f.nombre)).join(', ')}). Pide el sobre al laboratorio`,ord:30,fn:"abrirAnalisis('foliar')"}); } }
   // primavera: algodoncillo
   if(md>='04-01'&&md<='05-31'){ const al=fs.filter(f=>f.algodoncillo); const ya=al.filter(f=>{ const u=ultMuestra('algodoncillo',f.id); return u&&difDias(u.fecha,h)<=7; });
     if(al.length&&ya.length<al.length) out.push({c:'',t:`Floración: muestrea el <b>algodoncillo</b> en ${al.filter(f=>!ya.includes(f)).map(f=>esc(f.nombre)).join(', ')} (10 olivos × 10 racimos)`,ord:22,fn:'abrirAlgodoncillo()'});
