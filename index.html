@@ -3224,22 +3224,25 @@ function abrirAforo(){
   $('#frm').innerHTML=`<h3>Aforo: cosecha esperada</h3><p class="mut">Mira unos cuantos olivos repartidos por la finca (los buenos y los flojos) y pon los kilos que calculas que tiene cada uno. La app saca la media y la multiplica por los olivos de la finca.</p>
     ${chipsFinca('m_finca')}
     <div class="row" style="flex-wrap:nowrap"><input id="afK" inputmode="decimal" placeholder="kg de este olivo" style="flex:1;margin:0"><button type="button" class="btn" id="afA">Añadir</button></div>
-    <div class="chips" style="margin-top:6px">${[10,15,20,25,30,40,50].map(v=>`<button type="button" class="chip" data-af="${v}">${v} kg</button>`).join('')}</div>
+    <div class="chips" style="margin-top:6px">${[5,10,15,20,25,30,40,50,60,70,80,90,100,120].map(v=>`<button type="button" class="chip" data-af="${v}">${v}</button>`).join('')}</div>
     <div id="afL" class="mut" style="margin:6px 0"></div>
+    <label>En el suelo (kg por olivo, de media; si hay)<input id="afS" inputmode="decimal" placeholder="0"></label>
     <div class="kpis"><div class="kpi"><span>Media por olivo</span><b id="afM">—</b></div><div class="kpi"><span>Cosecha esperada</span><b id="afE">—</b></div></div>
-    <p class="mut" id="afC"></p>${pieMuestra()}`;
+    <p class="mut" id="afC"></p><div id="afR"></div>${pieMuestra()}`;
   const F=$('#frm'); activarChips(F);
   const pinta=()=>{ const f=D.fincas.find(x=>x.id===F.m_finca.value), m=kg.length?kg.reduce((a,b)=>a+b,0)/kg.length:null;
     $('#afL').innerHTML=kg.length?`${kg.length} olivos: ${kg.map((v,i)=>`<a href="#" onclick="event.preventDefault();" data-q="${i}">${num(v)}</a>`).join(' · ')} <span>(toca uno para quitarlo)</span>`:'Aún ningún olivo.';
     $('#afL').querySelectorAll('[data-q]').forEach(a=>a.onclick=e=>{ e.preventDefault(); kg.splice(+a.dataset.q,1); pinta(); });
     $('#afM').textContent=m!=null?num(m,1)+' kg':'—'; const est=m!=null&&f?.olivos?m*f.olivos:null; $('#afE').textContent=est!=null?num(Math.round(est))+' kg':'—';
     const prev=cosecha(`${parseInt(CAMP)-1}/${String(parseInt(CAMP)).slice(2)}`).porF[f?.id]?.kilos;
-    $('#afC').textContent=est!=null&&prev?`La campaña pasada entregaste ${num(prev)} kg de esta finca (${num(prev/f.olivos,1)} kg/olivo).`:kg.length&&kg.length<8?'Mejor mirar al menos 8-10 olivos para que la media valga.':''; return {m,est}; };
+    $('#afC').textContent=est!=null&&prev?`La campaña pasada entregaste ${num(prev)} kg de esta finca (${num(prev/f.olivos,1)} kg/olivo).`:kg.length&&kg.length<8?'Mejor mirar al menos 8-10 olivos para que la media valga.':'';
+    const su=pn($('#afS').value)||0; $('#afR').innerHTML=m!=null&&f?htmlCompensa(f,m,su):''; return {m,est,su}; };
+  $('#afS').oninput=()=>pinta();
   const add=v=>{ if(v>0){ kg.push(v); $('#afK').value=''; pinta(); } };
   $('#afA').onclick=()=>add(pn($('#afK').value)); $('#afK').onkeydown=e=>{ if(e.key==='Enter'){ e.preventDefault(); add(pn($('#afK').value)); } };
   F.querySelectorAll('[data-af]').forEach(b=>b.onclick=()=>add(+b.dataset.af));
   F.querySelector('[data-chips=m_finca]').addEventListener('click',()=>setTimeout(pinta,0));
-  F.onsubmit=e=>{ e.preventDefault(); const {m,est}=pinta(); if(!kg.length){ toast('Añade algún olivo'); return; } guardarMuestra('aforo',Math.round(m*10)/10,{olivos:kg,estimado:est?Math.round(est):null}); };
+  F.onsubmit=e=>{ e.preventDefault(); const {m,est}=pinta(); if(!kg.length){ toast('Añade algún olivo'); return; } const su=pn($('#afS').value)||0; guardarMuestra('aforo',Math.round(m*10)/10,{olivos:kg,estimado:est?Math.round(est):null,suelo:su||null}); };
   pinta(); if(!$('#dlg').open) $('#dlg').showModal();
 }
 function abrirAlgodoncillo(){
@@ -3282,11 +3285,52 @@ function vMuestras(){
 }
 async function marcarAlg(fid,v){ const {error}=await sb.from('olv_fincas').update({algodoncillo:v}).eq('id',fid); if(error){ if(!sinRed(error)) toast('Error: '+error.message); return; } await cargar('fincas'); render(); }
 async function borrarMuestra(id){ if(!confirm('¿Borrar esta muestra?')) return; const {error}=await sb.from('olv_muestras').delete().eq('id',id); if(error){ if(!sinRed(error)) toast('Error: '+error.message); return; } await cargar('muestras'); render(); }
+// ===== ¿Compensa recoger? Lo que vale la aceituna del olivo frente a lo que cuesta cogerla =====
+function paramsRecog(){ const R=AJ.recog||{}, h=hoy();
+  let eur=R.eur_kg>0?{v:+R.eur_kg,de:'puesto por ti'}:null;
+  if(!eur){ const ins=D.ingresos.filter(i=>Number(i.kilos)>0&&Number(i.importe)>0&&/liquid|anticipo/i.test(i.tipo||'')&&i.fecha>=addDias(h,-800)); const k=ins.reduce((a,i)=>a+Number(i.kilos),0);
+    if(k>=500) eur={v:ins.reduce((a,i)=>a+Number(i.importe),0)/k,de:'lo que te han pagado'}; }
+  if(!eur&&ACE?.puesto?.v) eur={v:ACE.puesto.v,de:'puesto, precio de hoy'};
+  const ac=D.trabajadores.filter(t=>t.activo!==false&&Number(t.precio_dia)>0), pj=R.precio_jornal>0?+R.precio_jornal:ac.length?ac.reduce((a,t)=>a+Number(t.precio_dia),0)/ac.length:null;
+  // coste por olivo de la campaña pasada (jornales de recogida / olivos de las fincas recogidas)
+  const pc=`${parseInt(CAMP)-1}/${String(parseInt(CAMP)).slice(2)}`, [i0,f0]=campRango(pc), K=cosecha(pc);
+  const js=D.jornales.filter(j=>j.fecha>=i0&&j.fecha<=f0&&/recog|vare|vibr/i.test(j.tarea||''));
+  let coste=null; const fs=D.fincas.filter(f=>f.olivos>0&&K.porF[f.id]?.kilos>0&&js.some(j=>j.finca_id===f.id));
+  if(R.olivos_jornal>0&&pj) coste={v:pj/R.olivos_jornal,de:`${num(R.olivos_jornal)} olivos por jornal a ${eur2(pj)}`};
+  else if(fs.length){ const imp=js.filter(j=>fs.some(f=>f.id===j.finca_id)).reduce((a,j)=>a+Number(j.importe||0),0), ol=fs.reduce((a,f)=>a+Number(f.olivos),0); if(imp>0) coste={v:imp/ol,de:`tus jornales de recogida de ${pc}`}; }
+  const sOl=R.suelo_olivos_jornal>0&&pj?{v:pj/R.suelo_olivos_jornal,de:`${num(R.suelo_olivos_jornal)} olivos de suelo por jornal`}:null;
+  return {eur,pj,coste,suelo:{factor:R.suelo_pct>0?R.suelo_pct/100:0.7, fde:R.suelo_pct>0?'tuyo':'supuesto', coste:sOl}}; }
+const eur2=v=>eur(v).replace(/,00 €/,' €');
+function veredictoKg(kgOl,eurKg,costeOl){ const ing=kgOl*eurKg, m=ing-costeOl, umbral=costeOl/eurKg;
+  return {ing,m,umbral,c:m<0?'r':m<costeOl*0.3?'a':'g', t:m<0?'No compensa':m<costeOl*0.3?'Justo':'Compensa'}; }
+function htmlCompensa(f,kgOl,kgSuelo){ const P=paramsRecog();
+  if(!P.eur) return `<p class="mut">Para decirte si compensa recoger me falta el precio de la aceituna: apunta tus liquidaciones con kilos o ponlo en Cuentas → Cosecha.</p>`;
+  if(!P.coste) return `<p class="mut">Para decirte si compensa recoger me falta lo que cuesta: apunta la recogida en jornales (faena «Recogida») o pon cuántos olivos hacéis por jornal en Cuentas → Cosecha.</p>`;
+  const v=veredictoKg(kgOl,P.eur.v,P.coste.v);
+  let h=`<div class="aviso ${v.c==='r'?'bad':v.c==='a'?'':'ok'}" style="margin:8px 0"><b>${v.t} recoger del olivo</b>: ${num(kgOl,1)} kg × ${num(P.eur.v,2)} €/kg = ${eur(v.ing)} por olivo; cogerlo cuesta ≈ ${eur(P.coste.v)}. <b>Por debajo de ${num(v.umbral,1)} kg/olivo pierdes dinero.</b>`;
+  if(f.olivos) h+=`<br>En ${esc(f.nombre)} (${num(f.olivos)} olivos): ${v.m>=0?'te quedan':'pierdes'} ≈ <b>${eur(Math.abs(v.m*f.olivos))}</b> después de pagar la recogida.`;
+  h+=`<div class="mut" style="margin-top:4px">Precio: ${P.eur.de}. Coste: ${P.coste.de}.</div></div>`;
+  if(kgSuelo>0){ const es=P.eur.v*P.suelo.factor;
+    if(P.suelo.coste){ const s=veredictoKg(kgSuelo,es,P.suelo.coste.v); h+=`<div class="aviso ${s.c==='r'?'bad':s.c==='a'?'':'ok'}" style="margin:8px 0"><b>${s.t} recoger el suelo</b>: ${num(kgSuelo,1)} kg × ${num(es,2)} €/kg = ${eur(s.ing)} por olivo frente a ≈ ${eur(P.suelo.coste.v)}. Umbral: ${num(s.umbral,1)} kg/olivo.<div class="mut">Suelo pagado al ${Math.round(P.suelo.factor*100)} % del vuelo (${P.suelo.fde}). Coste: ${P.suelo.coste.de}.</div></div>`; }
+    else h+=`<p class="mut">Para el suelo dime en Cuentas → Cosecha cuántos olivos de suelo hacéis por jornal.</p>`; }
+  if(v.c!=='g') h+=`<p class="mut">Ojo: dejar la aceituna en el árbol le quita flor al año siguiente y mantiene la mosca. A veces compensa varearla aunque la cuenta salga justa.</p>`;
+  return h; }
+function htmlRecogCuentas(){ const R=AJ.recog||{}, P=paramsRecog(); const i=(k,l,ph)=>`<label>${l}<input inputmode="decimal" data-rc="${k}" onchange="cambiaRecog(this)" value="${R[k]!=null?String(R[k]).replace('.',','):''}" placeholder="${ph}"></label>`;
+  return `<details class="adv"><summary>Cuentas de la recogida</summary><div class="grid2">
+    ${i('eur_kg','Precio aceituna (€/kg)',P.eur&&P.eur.de!=='puesto por ti'?num(P.eur.v,2)+' ('+P.eur.de+')':'')}${i('precio_jornal','Precio del jornal (€)',P.pj?num(P.pj,0):'')}
+    ${i('olivos_jornal','Olivos que hacéis por jornal',P.coste&&!R.olivos_jornal?'según tus jornales':'')}${i('suelo_olivos_jornal','Olivos de suelo por jornal','')}
+    ${i('suelo_pct','El suelo se paga al (% del vuelo)','70')}</div><p class="mut">Vacío = lo saco de tus datos. Sirve para el «¿compensa recoger?» del aforo.</p></details>`; }
+function cambiaRecog(e){ AJ.recog={...(AJ.recog||{})}; const v=pn(e.value); if(v>0) AJ.recog[e.dataset.rc]=v; else delete AJ.recog[e.dataset.rc]; guardarAjustes(true); render(); }
 function htmlEsperada(){ const fs=D.fincas.filter(f=>f.activa), [ini]=campRango(CAMP); const K=cosecha(CAMP);
-  const l=fs.map(f=>{ const a=muestras('aforo',f.id).filter(m=>m.fecha>=addDias(ini,-60)).pop(); return a&&a.datos?.estimado?{f,est:a.datos.estimado,real:K.porF[f.id]?.kilos||0}:null; }).filter(Boolean);
+  const l=fs.map(f=>{ const a=muestras('aforo',f.id).filter(m=>m.fecha>=addDias(ini,-60)).pop(); return a&&a.datos?.estimado?{f,a,est:a.datos.estimado,real:K.porF[f.id]?.kilos||0}:null; }).filter(Boolean);
+  const P=paramsRecog(), ver=x=>{ if(!P.eur||!P.coste) return ''; const v=veredictoKg(Number(x.a.valor),P.eur.v,P.coste.v); return `<div class="mut"><span class="dot ${v.c}"></span>${num(x.a.valor,1)} kg/olivo · ${v.t.toLowerCase()}</div>`; };
   if(!l.length) return `<div class="card"><h2>Cosecha esperada</h2><p class="mut">Haz un aforo por finca (Campo → Muestras → Aforo) y aquí verás lo que esperas y lo que llevas entregado.</p><button class="btn sec sm" onclick="abrirAforo()">Hacer aforo</button></div>`;
   const tE=l.reduce((a,x)=>a+x.est,0), tR=l.reduce((a,x)=>a+x.real,0);
-  return `<div class="card"><h2>Cosecha esperada · ${esc(CAMP)}<span class="sp"></span><button class="btn sec sm" onclick="abrirAforo()">Nuevo aforo</button></h2><table><tr><th>Finca</th><th class="n">Esperado</th><th class="n">Entregado</th><th class="n">Falta</th></tr>${l.map(x=>`<tr><td>${esc(x.f.nombre)}</td><td class="n">${num(x.est)}</td><td class="n">${num(x.real)}</td><td class="n">${x.est>x.real?num(x.est-x.real):'<span class="pos">hecho</span>'}</td></tr>`).join('')}<tr><td><b>Total</b></td><td class="n"><b>${num(tE)}</b></td><td class="n"><b>${num(tR)}</b></td><td class="n"><b>${tE>tR?num(tE-tR):''}</b></td></tr></table><p class="mut">El esperado sale de tu aforo: es tan bueno como los olivos que mires. Al final de la campaña compara para afinar el ojo el año que viene.</p></div>`; }
+  return `<div class="card"><h2>Cosecha esperada · ${esc(CAMP)}<span class="sp"></span><button class="btn sec sm" onclick="abrirAforo()">Nuevo aforo</button></h2><table><tr><th>Finca</th><th class="n">Esperado</th><th class="n">Entregado</th><th class="n">Falta</th></tr>${l.map(x=>`<tr class="click" onclick="verCompensa('${x.f.id}')"><td>${esc(x.f.nombre)}${ver(x)}</td><td class="n">${num(x.est)}</td><td class="n">${num(x.real)}</td><td class="n">${x.est>x.real?num(x.est-x.real):'<span class="pos">hecho</span>'}</td></tr>`).join('')}<tr><td><b>Total</b></td><td class="n"><b>${num(tE)}</b></td><td class="n"><b>${num(tR)}</b></td><td class="n"><b>${tE>tR?num(tE-tR):''}</b></td></tr></table><p class="mut">El esperado sale de tu aforo: es tan bueno como los olivos que mires. Toca una finca para ver si compensa recogerla.</p>${htmlRecogCuentas()}</div>`; }
+function verCompensa(fid){ const f=D.fincas.find(x=>x.id===fid), a=muestras('aforo',fid).pop(); if(!f||!a) return;
+  $('#frm').oninput=null; $('#frm').onchange=null; $('#frm').onsubmit=e=>{ e.preventDefault(); $('#dlg').close(); };
+  $('#frm').innerHTML=`<h3>${esc(f.nombre)}: ¿compensa recoger?</h3><p class="mut">Aforo del ${fFecha(a.fecha)}: ${num(a.valor,1)} kg/olivo${a.datos?.suelo?` · suelo ${num(a.datos.suelo,1)} kg`:''}.</p>${htmlCompensa(f,Number(a.valor),Number(a.datos?.suelo)||0)}<div class="row acciones" style="justify-content:flex-end"><button class="btn">Cerrar</button></div>`;
+  $('#dlg').showModal(); }
 function avisosMuestras(h){
   const out=[], md=h.slice(5), fs=D.fincas.filter(f=>f.activa);
   // otoño: madurez y rendimiento
