@@ -173,7 +173,7 @@ details.adv{margin:4px 0 10px}details.adv summary{cursor:pointer;color:var(--olv
 
 <script>
 // ===== Configuración =====
-const VERSION = '3.9';
+const VERSION = '3.10';
 const VERSION_FECHA = '10 oct 2026';
 const CREDITOS = `Olivas v${VERSION} (${VERSION_FECHA}) · © 2026 Alfonso Carrascosa Martínez · Hecha con Claude (Anthropic)`;
 const SUPA_URL = 'https://kseyndjbmkaflpoqitsj.supabase.co';
@@ -2752,8 +2752,25 @@ async function cargarGasolineras(){
   if(GAS&&Date.now()-GAS.t<30*60e3) return GAS.l;
   const {data,error}=await sb.from('olv_gasolineras').select('*'); if(error||!data) return GAS?GAS.l:[];
   const c=centroFincas(); data.forEach(g=>g.km=g.lat!=null?km(c.lat,c.lon,g.lat,g.lon):999); data.sort((a,b)=>a.km-b.km);
-  GAS={t:Date.now(),l:data}; return data;
+  GAS={t:Date.now(),l:data}; return aplicarDesc(data);
 }
+// Descuentos tuyos por gasolinera (Jaencoop 10 cts/l, Waylet en Repsol…): los precios que ves y usa la app ya los llevan quitados
+const GAS_DESC_DEF=[{patron:'Jaencoop',cts:10,nota:'Socio'},{patron:'Repsol',cts:null,nota:'Waylet (cambia según la promoción)'}];
+function gasDesc(){ return AJ.gas_desc||GAS_DESC_DEF; }
+function descDe(g){ const r=gasDesc().find(d=>d.patron&&Number(d.cts)>0&&(g.rotulo||'').toLowerCase().includes(d.patron.toLowerCase().trim())); return r?{v:Number(r.cts)/100,r}:null; }
+function aplicarDesc(l){ l.forEach(g=>{ ['gasoleo_b','gasoleo_a','gasolina95'].forEach(k=>{ if(g['raw_'+k]===undefined) g['raw_'+k]=g[k]; }); const d=descDe(g); g._desc=d;
+    ['gasoleo_b','gasoleo_a','gasolina95'].forEach(k=>{ const v=g['raw_'+k]; g[k]=v!=null&&d?Math.round((Number(v)-d.v)*1000)/1000:v; }); }); return l; }
+function editarDescuentos(){ const L=gasDesc();
+  const fila=(d,i)=>`<div class="grid2" data-gd="${i}" style="grid-template-columns:1.3fr .8fr 1.4fr;gap:6px"><label>Gasolinera (nombre)<input data-k="patron" value="${esc(d.patron||'')}" placeholder="Jaencoop"></label><label>Céntimos/l<input data-k="cts" inputmode="decimal" value="${d.cts!=null?String(d.cts).replace('.',','):''}"></label><label>Por qué<input data-k="nota" value="${esc(d.nota||'')}"></label></div>`;
+  $('#frm').oninput=null; $('#frm').onchange=null;
+  $('#frm').innerHTML=`<h3>Mis descuentos en gasolineras</h3><p class="mut">Se restan del precio oficial en todas partes: lo que ves en Precios e Inicio, los litros que salen de un gasto y lo que cuestan los viajes. El nombre basta con una parte (p. ej. «Repsol» vale para todas las Repsol). Si el descuento cambia (Waylet), cámbialo aquí; vacío = sin descuento.</p>
+    <div id="gdL">${(L.length?L:[{}]).map(fila).join('')}</div><button type="button" class="btn sec sm" id="gdMas">+ Otro</button>
+    ${AJ.gas_desc_fecha?`<p class="mut">Última vez cambiado: ${fFecha(AJ.gas_desc_fecha)}.</p>`:''}
+    <div class="row acciones" style="justify-content:flex-end"><button type="button" class="btn sec" onclick="$('#dlg').close()">Cancelar</button><button class="btn" id="fOk">Guardar</button></div>`;
+  let n=L.length||1; $('#gdMas').onclick=()=>$('#gdL').insertAdjacentHTML('beforeend',fila({},n++));
+  $('#frm').onsubmit=async e=>{ e.preventDefault(); AJ.gas_desc=[...document.querySelectorAll('[data-gd]')].map(el=>{ const g=k=>el.querySelector(`[data-k=${k}]`).value.trim(); const c=pn(g('cts')); return {patron:g('patron'),cts:c>0?c:null,nota:g('nota')}; }).filter(d=>d.patron);
+    AJ.gas_desc_fecha=hoy(); $('#dlg').close(); await guardarAjustes(true); if(GAS) aplicarDesc(GAS.l); render(); toast('Descuentos guardados'); };
+  $('#dlg').showModal(); }
 async function gasolineraFav(){ const l=await cargarGasolineras(); if(!l.length) return null;
   return l.find(g=>g.id===AJ.gasolinera) || l.find(g=>/jaencoop/i.test(g.rotulo||'')&&g.km<25&&g.gasoleo_b) || l.find(g=>g.gasoleo_b) || l[0]; }
 async function pintarCarburantes(){
@@ -2764,10 +2781,12 @@ async function pintarCarburantes(){
   const c=(v,m)=>v?`<span class="${v===m?'pos':''}">${num(v,3)}</span>`:'<span class="mut">—</span>';
   box.innerHTML=`<div class="card"><h2>Gasoil y gasolina hoy</h2>
     ${fav?`<div class="kpis"><div class="kpi"><span>Gasóleo B · ${esc(fav.rotulo)}</span><b>${fav.gasoleo_b?num(fav.gasoleo_b,3)+' €':'—'}</b></div><div class="kpi"><span>Gasóleo A</span><b>${fav.gasoleo_a?num(fav.gasoleo_a,3)+' €':'—'}</b></div><div class="kpi"><span>Gasolina 95</span><b>${fav.gasolina95?num(fav.gasolina95,3)+' €':'—'}</b></div></div>`:''}
+    ${fav?._desc?`<p class="mut" style="margin-top:-4px">Con tu descuento de ${num(fav._desc.r.cts,1)} cts/l (${esc(fav._desc.r.nota||fav._desc.r.patron)}). Sin él: B ${num(fav.raw_gasoleo_b,3)} €.</p>`:''}
     <div class="scroll"><table><tr><th>Gasolinera</th><th class="n">B</th><th class="n">A</th><th class="n">95</th></tr>
-    ${cerca.map(g=>`<tr class="click" onclick="AJ.gasolinera='${g.id}';guardarAjustes(true);pintarCarburantes()"><td>${g.id===fav?.id?'★ ':''}<b>${esc(g.rotulo||'')}</b><div class="mut">${esc(g.localidad||g.municipio||'')} · ${num(g.km,1)} km · ${esc(g.direccion||'')}</div></td><td class="n">${c(g.gasoleo_b,minB)}</td><td class="n">${c(g.gasoleo_a,minA)}</td><td class="n">${c(g.gasolina95,min95)}</td></tr>`).join('')}</table></div>
+    ${cerca.map(g=>`<tr class="click" onclick="AJ.gasolinera='${g.id}';guardarAjustes(true);pintarCarburantes()"><td>${g.id===fav?.id?'★ ':''}<b>${esc(g.rotulo||'')}</b><div class="mut">${esc(g.localidad||g.municipio||'')} · ${num(g.km,1)} km · ${esc(g.direccion||'')}${g._desc?` · <span class="pos">−${num(g._desc.r.cts,1)} cts tuyo</span>`:''}</div></td><td class="n">${c(g.gasoleo_b,minB)}</td><td class="n">${c(g.gasoleo_a,minA)}</td><td class="n">${c(g.gasolina95,min95)}</td></tr>`).join('')}</table></div>
     <div class="chips" style="margin-top:8px">${[10,15,30].map(k=>`<button class="chip ${(SUB.carbKm||15)===k?'on':''}" onclick="SUB.carbKm=${k};pintarCarburantes()">${k} km</button>`).join('')}</div>
-    <p class="mut">Precios oficiales del Ministerio (${esc(l[0].fecha_precios||'')}), se actualizan 4 veces al día. En verde, el más barato de la lista. Toca una para marcarla como la tuya (★): se usa para calcular los litros de los gastos de gasoil.</p></div>`;
+    <p class="mut">Precios oficiales del Ministerio (${esc(l[0].fecha_precios||'')}), se actualizan 4 veces al día. En verde, el más barato de la lista, ya con tus descuentos. Toca una para marcarla como la tuya (★): se usa para calcular los litros de los gastos de gasoil.</p>
+    <button class="btn sec sm" onclick="editarDescuentos()">Mis descuentos (${gasDesc().filter(d=>Number(d.cts)>0).map(d=>esc(d.patron)+' '+num(d.cts,1)+' cts').join(', ')||'ninguno'})</button></div>`;
 }
 let EST=null; const LLU={};
 async function lluviaReal(f, codigo){
@@ -2865,7 +2884,7 @@ async function pintarWidgets(){
       put('w_tiempo',{tag:`<span>${esc(f.nombre)}</span>`,v:`<span class="ic">${WICO(d.code)}</span>${num(d.tmin)}–${num(d.tmax)}°`,s:`${d.lluvia>0?num(d.lluvia,1)+' mm · ':''}olivo: <span class="dot ${d.work.c}"></span>${d.work.c==='g'?'bien':d.work.c==='a'?'regular':'mojado'}${m?` · mañana ${WICO(m.code)} ${num(m.tmax)}°`:''}`}); }).catch(()=>put('w_tiempo',{v:'<span class="mut" style="font-size:14px">Sin conexión</span>'})); }
   if($('#w_gasoil')) gasolineraFav().then(g=>{ if(!g){ put('w_gasoil',{v:'<span class="mut" style="font-size:14px">Sin datos</span>'}); return; }
       const l=GAS.l.filter(x=>x.km<=15&&x.gasoleo_b), min=l.reduce((a,x)=>!a||x.gasoleo_b<a.gasoleo_b?x:a,null);
-      put('w_gasoil',{v:g.gasoleo_b?`${num(g.gasoleo_b,3)} €`:'—',s:`${esc(g.rotulo)}${min&&min.id!==g.id&&min.gasoleo_b<g.gasoleo_b?` · más barato: ${esc(min.rotulo)} ${num(min.gasoleo_b,3)}`:' · el más barato cerca'}`}); }).catch(()=>{});
+      put('w_gasoil',{v:g.gasoleo_b?`${num(g.gasoleo_b,3)} €`:'—',s:`${esc(g.rotulo)}${g._desc?' (con tu descuento)':''}${min&&min.id!==g.id&&min.gasoleo_b<g.gasoleo_b?` · más barato: ${esc(min.rotulo)} ${num(min.gasoleo_b,3)}`:' · el más barato cerca'}`}); }).catch(()=>{});
   if($('#w_lluvia')){ if(!f) put('w_lluvia',{v:'—'}); else lluviaReal(f).then(L=>{ if(!L){ put('w_lluvia',{v:'<span class="mut" style="font-size:14px">Sin estación cerca</span>'}); return; }
       put('w_lluvia',{tag:`<span>${esc(L.est.municipio||'')}</span>`,v:`${num(L.d7,1)} mm <span class="mut" style="font-size:12px;font-weight:400">7 días</span>`,s:`hoy ${num(L.hoy,1)} · desde sept. ${num(L.camp,1)} mm${L.desde>L.sep?'*':''}`}); }).catch(()=>{}); }
 }
