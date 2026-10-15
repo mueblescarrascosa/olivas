@@ -173,7 +173,7 @@ details.adv{margin:4px 0 10px}details.adv summary{cursor:pointer;color:var(--olv
 
 <script>
 // ===== Configuración =====
-const VERSION = '3.30';
+const VERSION = '3.31';
 const VERSION_FECHA = '15 oct 2026';
 const CREDITOS = `Olivas v${VERSION} (${VERSION_FECHA}) · © 2026 Alfonso Carrascosa Martínez · Hecha con Claude (Anthropic)`;
 const SUPA_URL = 'https://kseyndjbmkaflpoqitsj.supabase.co';
@@ -1027,6 +1027,7 @@ const porNombre=(a,b)=>trabNom(a.trabajador_id).localeCompare(trabNom(b.trabajad
 // Kilos de empresa y máquinas que traen (vibradora, quad, coche…): se le deben a una empresa/cuadrilla o a una persona suelta
 const claveServ=x=>x.trabajador_id&&!x.empresa_id?'t:'+x.trabajador_id:'e:'+x.empresa_id;
 const svNom=x=>x.empresa_id?empNom(x.empresa_id):trabNom(x.trabajador_id);
+const titSv=L=>{ const k=L.some(x=>Number(x.kilos)>0), m=L.some(x=>x.concepto); return k&&m?'Kilos y máquinas':m?'Máquinas que han traído':'Kilos a destajo'; };
 const svTxt=x=>x.concepto||(Number(x.kilos)?num(x.kilos)+' kg recogidos':'');
 function claveDeuda(j){ return j.empresa_id ? 'e:'+j.empresa_id : 't:'+j.trabajador_id; }
 function pendientes(){ const p={}; const add=(k,v)=>p[k]=(p[k]||0)+Number(v);
@@ -1191,7 +1192,7 @@ function htmlPorFaena(l,sv){
   return `<div class="card"><p class="mut" style="margin-top:0">Campaña ${esc(CAMP)} · ${eur(tot)} en total. Toca una faena para ver sus días.</p>${L.map((x,i)=>{ const G={}; x.js.forEach(j=>{ const k=j.fecha+'|'+(j.finca_id||''); (G[k]=G[k]||[]).push(j); });
     return `<details ${i===0?'open':''} style="border-top:1px solid var(--line);padding:6px 0"><summary style="cursor:pointer;display:flex;gap:6px;align-items:baseline"><b style="flex:1">${esc(x.f)}</b><span class="mut" style="font-size:13px">${x.dias} ${x.dias===1?'día':'días'} · ${num(x.h,0)} h</span><b>${eur(x.imp)}</b></summary>
       <table>${Object.entries(G).sort((a,b)=>b[0].localeCompare(a[0])).map(([k,g])=>{ const [d,fi]=k.split('|'); return `<tr class="click" onclick="editarGrupoJ('${d}','${encodeURIComponent((g[0].tarea||'')+'|'+(g[0].finca_id||'')).replace(/'/g,'%27')}')"><td>${diaSemana(d)}/${+d.slice(5,7)}<div class="mut">${esc(fincaNom(fi||null))}</div></td><td class="n">${g.length} ${g.length===1?'persona':'pers.'}</td><td class="n" style="width:84px">${eur(g.reduce((a,j)=>a+Number(j.importe),0))}</td></tr>`; }).join('')}</table></details>`; }).join('')}
-    ${sv.length?`<details style="border-top:1px solid var(--line);padding:6px 0"><summary style="cursor:pointer;display:flex;gap:6px;align-items:baseline"><b style="flex:1">Kilos y máquinas</b><span class="mut" style="font-size:13px">${num(sv.reduce((a,x)=>a+Number(x.kilos||0),0))} kg</span><b>${eur(kS)}</b></summary><table>${sv.map(x=>`<tr class="click" data-ed="servicios:${x.id}"><td>${diaSemana(x.fecha)}<div class="mut">${esc(svNom(x))} · ${esc(svTxt(x))} · ${esc(fincaNom(x.finca_id))}</div></td><td class="n">${Number(x.kilos)?num(x.kilos)+' kg':'🚜'}</td><td class="n">${eur(x.importe)}</td></tr>`).join('')}</table></details>`:''}</div>`;
+    ${sv.length?`<details style="border-top:1px solid var(--line);padding:6px 0"><summary style="cursor:pointer;display:flex;gap:6px;align-items:baseline"><b style="flex:1">${titSv(sv)}</b><span class="mut" style="font-size:13px">${num(sv.reduce((a,x)=>a+Number(x.kilos||0),0))} kg</span><b>${eur(kS)}</b></summary><table>${sv.map(x=>`<tr class="click" data-ed="servicios:${x.id}"><td>${diaSemana(x.fecha)}<div class="mut">${esc(svNom(x))} · ${esc(svTxt(x))} · ${esc(fincaNom(x.finca_id))}</div></td><td class="n">${Number(x.kilos)?num(x.kilos)+' kg':'🚜'}</td><td class="n">${eur(x.importe)}</td></tr>`).join('')}</table></details>`:''}</div>`;
 }
 // ===== Cambiar de golpe todas las jornadas de una faena en un día =====
 function editarGrupoJ(fecha,clave){ clave=decodeURIComponent(clave); const [tarea,finca]=clave.split('|'); const g=D.jornales.filter(j=>j.fecha===fecha&&(j.tarea||'')===tarea&&(j.finca_id||'')===finca).sort(porNombre); if(!g.length) return;
@@ -2195,7 +2196,7 @@ function vFichaEmp(e){
   <div class="card"><h2>Por persona</h2>${P.length?`<table><tr><th>Quién</th><th class="n">Sin cobrar</th>${P.some(p=>p.av)?'<th class="n">A cuenta</th>':''}<th class="n">Le queda</th></tr>${P.map(p=>`<tr class="click" onclick="verFicha('trabajadores','${p.t}')"><td>${esc(p.nom)} ›<div class="mut">${p.dias} ${p.dias===1?'día':'días'}</div></td><td class="n">${eur(p.gn)}</td>${P.some(q=>q.av)?`<td class="n">${p.av?eur(p.av):''}</td>`:''}<td class="n"><b>${p.resto<0?'+'+eur(-p.resto)+' a cuenta':eur(p.resto)}</b></td></tr>`).join('')}</table>`:'<p class="pos">No se le debe nada.</p>'}
     ${svP.length?`<p class="mut">Además, kilos sin pagar: ${eur(svP.reduce((s,x)=>s+Number(x.importe),0))}</p>`:''}</div>
   <div class="card"><h2>Pagos</h2>${htmlPagosDe(a=>a.empresa_id===e.id)}${htmlPagadosDe(js)?`<details style="margin-top:8px"><summary><b>Días ya pagados</b></summary>${htmlPagadosDe(js)}</details>`:''}</div>
-  ${svc.length?`<div class="card"><h2>Kilos y máquinas ${esc(CAMP)}</h2><table>${svc.map(x=>`<tr class="click" data-ed="servicios:${x.id}"><td>${fFecha(x.fecha)}<div class="mut">${esc(svTxt(x))} · ${esc(fincaNom(x.finca_id))}</div></td><td class="n">${Number(x.kilos)?num(x.kilos)+' kg':'🚜'}</td><td class="n">${eur(x.importe)}${x.pagado?'<div class="pos" style="font-size:12px">pagado</div>':''}</td></tr>`).join('')}</table></div>`:''}
+  ${svc.length?`<div class="card"><h2>${titSv(svc)} ${esc(CAMP)}</h2><table>${svc.map(x=>`<tr class="click" data-ed="servicios:${x.id}"><td>${fFecha(x.fecha)}<div class="mut">${esc(svTxt(x))} · ${esc(fincaNom(x.finca_id))}</div></td><td class="n">${Number(x.kilos)?num(x.kilos)+' kg':'🚜'}</td><td class="n">${eur(x.importe)}${x.pagado?'<div class="pos" style="font-size:12px">pagado</div>':''}</td></tr>`).join('')}</table></div>`:''}
   ${e.notas?`<div class="card"><h2>Notas</h2><p>${esc(e.notas)}</p></div>`:''}`;
 }
 function vFichaMaq(m){
