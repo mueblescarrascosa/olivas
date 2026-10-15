@@ -173,7 +173,7 @@ details.adv{margin:4px 0 10px}details.adv summary{cursor:pointer;color:var(--olv
 
 <script>
 // ===== Configuración =====
-const VERSION = '3.16';
+const VERSION = '3.18';
 const VERSION_FECHA = '15 oct 2026';
 const CREDITOS = `Olivas v${VERSION} (${VERSION_FECHA}) · © 2026 Alfonso Carrascosa Martínez · Hecha con Claude (Anthropic)`;
 const SUPA_URL = 'https://kseyndjbmkaflpoqitsj.supabase.co';
@@ -1028,27 +1028,44 @@ function vJornales(){
 function editarGrupoJ(fecha,clave){ clave=decodeURIComponent(clave); const [tarea,finca]=clave.split('|'); const g=D.jornales.filter(j=>j.fecha===fecha&&(j.tarea||'')===tarea&&(j.finca_id||'')===finca); if(!g.length) return;
   const moda=a=>{ const c={}; a.forEach(x=>c[x]=(c[x]||0)+1); return Number(Object.entries(c).sort((x,y)=>y[1]-x[1])[0][0]); };
   const hRef=moda(g.map(j=>Number(j.horas)||0)), pRef=moda(g.map(j=>Number(j.importe)||0)), tot0=g.reduce((a,j)=>a+Number(j.importe),0);
-  const fmt=v=>String(v).replace('.',',');
+  const fmt=v=>String(Math.round(v*100)/100).replace('.',',');
   $('#frm').oninput=null; $('#frm').onchange=null;
-  $('#frm').innerHTML=`<h3>${esc(tarea||'Sin faena')} · ${esc(fincaNom(finca||null))}</h3><p class="mut">${fFecha(fecha)} · ${g.length} ${g.length===1?'persona':'personas'}: ${esc(g.map(j=>trabNom(j.trabajador_id)).join(', '))}. Lo que cambies aquí se aplica a todos.</p>
-    <div class="grid2"><label>Jornal completo (€)<input name="precio" inputmode="decimal" placeholder="no cambiar (${fmt(pRef)})"></label><label>Horas de la jornada completa<input name="href" inputmode="decimal" value="${fmt(hRef)}"></label></div>
-    <label class="chk"><input type="checkbox" name="prop" checked> Al que echó menos horas, pagarle en proporción</label>
-    <label>Horas para todos (vacío = las que tiene cada uno)<input name="horas" inputmode="decimal" placeholder="no cambiar"></label>
+  $('#frm').innerHTML=`<h3>${esc(tarea||'Sin faena')} · ${esc(fincaNom(finca||null))}</h3><p class="mut">${fFecha(fecha)} · ${g.length} ${g.length===1?'persona':'personas'}. Cambia aquí las horas o lo que cobra cada uno; para cambiar a todos, abre «Cambiar a todos a la vez».</p>
+    <table class="gjT"><tr><th>Quién</th><th style="width:64px">Horas</th><th style="width:78px">€</th></tr>${g.map(j=>`<tr><td>${esc(trabNom(j.trabajador_id))}</td><td><input data-gh="${j.id}" inputmode="decimal" value="${fmt(Number(j.horas)||0)}" style="width:58px"></td><td><input data-gi="${j.id}" inputmode="decimal" value="${fmt(Number(j.importe)||0)}" style="width:72px"></td></tr>`).join('')}</table>
+    <details style="margin:8px 0"><summary><b>Cambiar a todos a la vez</b></summary>
+    <div class="grid2"><label>Horas que echaron<input name="horas" inputmode="decimal" placeholder="no cambiar"></label><label>Lo que cobra cada uno (€)<input name="precio" inputmode="decimal" placeholder="no cambiar"></label></div>
+    <p class="mut" style="margin:0">Ej.: 5 horas y 50 €. Si solo pones las horas, el dinero se calcula en proporción a ${fmt(pRef)} € por ${fmt(hRef)} h.</p></details>
     <label>Faena<input name="tarea" value="${esc(tarea)}"></label>
     <span class="clab">Pagado</span><div class="chips" data-chips="pag"><button type="button" class="chip on" data-val="">No tocar</button><button type="button" class="chip" data-val="si">Todo pagado</button><button type="button" class="chip" data-val="no">Nada pagado</button></div><input type="hidden" name="pag" value="">
     <p id="gjRes" class="aviso" style="margin:8px 0"></p>
     <div class="row acciones" style="justify-content:space-between"><button type="button" class="btn del" id="gjDel">Borrar las ${g.length}</button><div class="row"><button type="button" class="btn sec" onclick="$('#dlg').close()">Cancelar</button><button class="btn" id="fOk">Guardar</button></div></div>`;
   const F=$('#frm'); activarChips(F);
-  const calc=()=>{ const pr=pn(F.precio.value), hr=pn(F.href.value)||hRef||1, hT=pn(F.horas.value);
-    return g.map(j=>{ const h=hT!=null?hT:Number(j.horas)||0; const imp=pr==null?Number(j.importe):Math.round((F.prop.checked&&hr?pr*Math.min(h,hr)/hr+(h>hr?pr*(h-hr)/hr:0):pr)*100)/100; return {j,h,imp}; }); };
-  const pinta=()=>{ const L=calc(), t=L.reduce((a,x)=>a+x.imp,0); $('#gjRes').innerHTML=`Total: <b>${eur(t)}</b>${Math.abs(t-tot0)>0.004?` (antes ${eur(tot0)}, ${t>tot0?'+':''}${eur(t-tot0)})`:''}${L.some(x=>x.imp!==L[0].imp)?'<br><span class="mut">'+L.map(x=>`${esc(trabNom(x.j.trabajador_id))} ${eur(x.imp)}`).join(' · ')+'</span>':''}`; };
-  F.oninput=pinta; F.onchange=pinta; pinta();
+  const inH=id=>F.querySelector(`[data-gh="${id}"]`), inI=id=>F.querySelector(`[data-gi="${id}"]`);
+  const pago=(pr,h,hr)=>Math.round(pr*h/(hr||h||1)*100)/100;
+  const ok=v=>v!=null&&!isNaN(v);
+  // Lo de «a todos» rellena la tabla; la tabla es lo que se guarda
+  const aplicarTodos=()=>{ const pr=pn(F.precio.value), hT=pn(F.horas.value);
+    g.forEach(j=>{ if(ok(hT)) inH(j.id).value=fmt(hT); if(ok(pr)) inI(j.id).value=fmt(pr); else if(ok(hT)&&!tocadoI.has(j.id)) inI(j.id).value=fmt(pago(pRef,hT,hRef)); }); };
+  // al cambiar las horas de uno, su jornal se ajusta en proporción (si no has tocado su €)
+  const tocadoI=new Set();
+  g.forEach(j=>{ inH(j.id).oninput=()=>{ const h=pn(inH(j.id).value); if(ok(h)&&!tocadoI.has(j.id)) inI(j.id).value=fmt(pago(pRef,h,hRef)); pinta(); };
+    inI(j.id).oninput=()=>{ tocadoI.add(j.id); pinta(); }; });
+  const calc=()=>g.map(j=>{ const h=pn(inH(j.id).value), imp=pn(inI(j.id).value); return {j,h:h==null||isNaN(h)?Number(j.horas)||0:h,imp:imp==null||isNaN(imp)?Number(j.importe):imp}; });
+  const pinta=()=>{ const L=calc(), t=L.reduce((a,x)=>a+x.imp,0); $('#gjRes').innerHTML=`Total: <b>${eur(t)}</b>${Math.abs(t-tot0)>0.004?` (antes ${eur(tot0)}, ${t>tot0?'+':''}${eur(t-tot0)})`:''}`; };
+  ['precio','horas'].forEach(n=>F[n].addEventListener('input',()=>{ aplicarTodos(); pinta(); }));
+  pinta();
   $('#gjDel').onclick=async()=>{ if(!confirm(`¿Borrar las ${g.length} jornadas de ${tarea||'esta faena'} del ${fFecha(fecha)}?`)) return;
     const {error}=await sb.from('olv_jornales').delete().in('id',g.map(j=>j.id)); if(error){ toast('Error: '+error.message); return; } $('#dlg').close(); await cargar('jornales'); pintarCampanas(); render(); toast(`${g.length} jornadas borradas`); };
-  F.onsubmit=async e=>{ e.preventDefault(); $('#fOk').disabled=true; const pag=F.pag.value, nt=F.tarea.value.trim()||null; let mal=0;
-    for(const x of calc()){ const u={importe:x.imp,horas:x.h,tarea:nt}; if(pag==='si'&&!x.j.pagado){ u.pagado=true; u.pagado_fecha=hoy(); } if(pag==='no'){ u.pagado=false; u.pagado_fecha=null; }
-      const {error}=await sb.from('olv_jornales').update(u).eq('id',x.j.id); if(error) mal++; }
-    $('#dlg').close(); await cargar('jornales'); pintarCampanas(); render(); toast(mal?`Fallaron ${mal}`:`${g.length} jornadas cambiadas`); };
+  F.onsubmit=async e=>{ e.preventDefault(); const pag=F.pag.value, nt=F.tarea.value.trim()||null;
+    const cambios=calc().map(x=>{ const u={}; if(Math.abs(x.imp-Number(x.j.importe))>0.004) u.importe=x.imp; if(Math.abs(x.h-Number(x.j.horas||0))>0.004) u.horas=x.h; if(nt!==(x.j.tarea||null)) u.tarea=nt;
+      if(pag==='si'&&!x.j.pagado){ u.pagado=true; u.pagado_fecha=hoy(); } if(pag==='no'&&x.j.pagado){ u.pagado=false; u.pagado_fecha=null; } return {id:x.j.id,u}; }).filter(c=>Object.keys(c.u).length);
+    if(!cambios.length){ $('#dlg').close(); toast('No había nada que cambiar'); return; }
+    $('#fOk').disabled=true; $('#fOk').textContent='Guardando…';
+    // los cambios iguales van juntos en una sola llamada, y todas a la vez
+    const lotes={}; cambios.forEach(c=>{ const k=JSON.stringify(c.u); (lotes[k]=lotes[k]||[]).push(c.id); });
+    const res=await Promise.all(Object.entries(lotes).map(([k,ids])=>sb.from('olv_jornales').update(JSON.parse(k)).in('id',ids)));
+    const mal=res.filter(r=>r.error).length;
+    $('#dlg').close(); await cargar('jornales'); pintarCampanas(); render(); toast(mal?`Fallaron algunos cambios: ${res.find(r=>r.error).error.message}`:`${cambios.length} ${cambios.length===1?'jornada cambiada':'jornadas cambiadas'}`); };
   $('#dlg').showModal(); }
 // ===== Facturas =====
 function escanear(){
