@@ -173,7 +173,7 @@ details.adv{margin:4px 0 10px}details.adv summary{cursor:pointer;color:var(--olv
 
 <script>
 // ===== Configuración =====
-const VERSION = '3.29';
+const VERSION = '3.30';
 const VERSION_FECHA = '15 oct 2026';
 const CREDITOS = `Olivas v${VERSION} (${VERSION_FECHA}) · © 2026 Alfonso Carrascosa Martínez · Hecha con Claude (Anthropic)`;
 const SUPA_URL = 'https://kseyndjbmkaflpoqitsj.supabase.co';
@@ -1206,6 +1206,8 @@ function editarGrupoJ(fecha,clave){ clave=decodeURIComponent(clave); const [tare
   $('#frm').innerHTML=`<h3>${esc(tarea||'Sin faena')} · ${esc(fincaNom(finca||null))}</h3><p class="mut">${fFecha(fecha)} · ${g.length} ${g.length===1?'persona':'personas'}. Cambia las horas o el dinero de cada uno, quita con ✕ al que no vino o añade abajo a quien faltaba.</p>
     <table class="gjT"><tr><th>Quién</th><th style="width:58px">Horas</th><th style="width:70px">€</th><th style="width:28px"></th></tr>${g.map(j=>`<tr data-gr="${j.id}"><td>${esc(trabNom(j.trabajador_id))}${j.sin_cobro?' <span class="tag">no cobra</span>':j.pagado?' <span class="tag">pagado</span>':''}</td><td><input data-gh="${j.id}" inputmode="decimal" value="${fmt(Number(j.horas)||0)}" style="width:52px" ${j.pagado?'disabled':''}></td><td><input data-gi="${j.id}" inputmode="decimal" value="${fmt(Number(j.importe)||0)}" style="width:64px" ${j.pagado?'disabled':''}></td><td><button type="button" class="btn sec sm" data-gx="${j.id}" title="Quitar" style="padding:4px 8px">✕</button></td></tr>`).join('')}</table>
     ${otros.length?`<details style="margin:8px 0" ${otros.length<=6?'':''}><summary><b>+ Añadir a alguien que vino</b></summary><div class="chips" id="gjAdd">${otros.map(t=>`<button type="button" class="chip" data-add="${t.id}">${esc(t.nombre)}${yaEseDia.has(t.id)?' ·otra faena':''}</button>`).join('')}</div><p class="mut" style="margin:0">Se le apuntan ${fmt(hRef)} h y su jornal; luego lo cambias en la tabla si hace falta.</p></details>`:''}
+    ${(()=>{ const O=[...new Set(g.map(j=>j.empresa_id).filter(Boolean))].map(eid=>empresa(eid)).filter(e=>e&&(e.extras||[]).length).map(e=>['empresas',e]).concat(g.filter(j=>!j.empresa_id).map(j=>D.trabajadores.find(t=>t.id===j.trabajador_id)).filter(t=>t&&(t.extras||[]).length).map(t=>['trabajadores',t]));
+      return O.length?`<div class="row" style="gap:6px;flex-wrap:wrap;margin:8px 0">${O.map(([k,x])=>{ const L=D.servicios.filter(s=>s.fecha===fecha&&(s.finca_id||'')===finca&&s.concepto&&(k==='empresas'?s.empresa_id===x.id:s.trabajador_id===x.id&&!s.empresa_id)); return `<button type="button" class="btn sec sm" onclick="abrirMaquinasDia('${k}','${x.id}','${fecha}','${finca}')">🚜 Máquinas de ${esc(x.nombre)}${L.length?': '+L.map(s=>esc(s.concepto)).join(', '):''}</button>`; }).join('')}</div>`:''; })()}
     <details style="margin:8px 0"><summary><b>Cambiar a todos a la vez</b></summary>
     <div class="grid2"><label>Horas que echaron<input name="horas" inputmode="decimal" placeholder="no cambiar"></label><label>Lo que cobra cada uno (€)<input name="precio" inputmode="decimal" placeholder="no cambiar"></label></div>
     <p class="mut" style="margin:0">Ej.: 5 horas y 50 €. Si solo pones las horas, a cada uno se le ajusta su dinero en proporción.</p>
@@ -2108,13 +2110,43 @@ function editarExtras(k,id){ const x=D[k].find(y=>y.id===id); if(!x) return; con
     if(error){ $('#fOk').disabled=false; if(!sinRed(error)) toast('Error: '+error.message); return; }
     $('#dlg').close(); await cargar(k,[id]); render(); toast('Guardado'); };
   if(!$('#dlg').open) $('#dlg').showModal(); }
+// Apuntar (o cambiar) las máquinas que trajo una empresa o persona un día concreto
+function abrirMaquinasDia(k,id,fecha,finca){ const x=D[k].find(y=>y.id===id); if(!x) return; const ex=x.extras||[];
+  if(!ex.length){ toast('Primero pon en su ficha qué máquinas trae («Máquinas que trae»)'); return; }
+  const owner=s=>k==='empresas'?s.empresa_id===id:(s.trabajador_id===id&&!s.empresa_id);
+  const fe0=fecha||hoy(), fi0=finca!=null?finca:(D.jornales.find(j=>j.fecha===fe0&&(k==='empresas'?j.empresa_id===id:j.trabajador_id===id))?.finca_id||'');
+  const jor=fe=>D.jornales.filter(j=>j.fecha===fe&&(k==='empresas'?j.empresa_id===id:j.trabajador_id===id));
+  const faena=fe=>jor(fe)[0]?.tarea||'';
+  const yaDe=(fe,fi)=>D.servicios.filter(s=>owner(s)&&s.fecha===fe&&(s.finca_id||'')===(fi||'')&&s.concepto&&ex.some(m=>s.concepto.startsWith(m.nombre+' ×')));
+  const cuenta=(L,m)=>{ const s=L.find(s=>s.concepto.startsWith(m.nombre+' ×')); return s?parseInt(s.concepto.split('×')[1])||0:0; };
+  $('#frm').oninput=null; $('#frm').onchange=null;
+  const pinta=()=>{ const fe=F.fecha.value||fe0, fi=F.finca.value, L=yaDe(fe,fi), fa=faena(fe);
+    $('#mdL').innerHTML=`${jor(fe).length?`<p class="mut" style="margin:0 0 6px">Ese día: ${jor(fe).length} ${jor(fe).length===1?'jornal':'jornales'} de ${esc(fa||'—')}.</p>`:'<p class="mut" style="margin:0 0 6px">Ese día no tiene jornales apuntados (se apunta igual).</p>'}
+      <table class="gjT">${ex.map((m,i)=>`<tr><td>${esc(m.nombre)}<div class="mut">${txtExtra(m)} · ${eur(valorExtra(k,x,m,fa))} cada una</div></td><td style="width:70px"><input data-md="${i}" inputmode="numeric" style="width:60px" value="${cuenta(L,m)||''}" placeholder="0"></td></tr>`).join('')}</table>`;
+    F.querySelectorAll('[data-md]').forEach(el=>el.oninput=tot); tot(); };
+  const tot=()=>{ const fa=faena(F.fecha.value||fe0); const t=ex.reduce((s,m,i)=>s+(parseInt(F.querySelector(`[data-md="${i}"]`)?.value)||0)*valorExtra(k,x,m,fa),0); $('#mdT').innerHTML=`Total máquinas ese día: <b>${eur(t)}</b>`; };
+  $('#frm').innerHTML=`<h3>🚜 Máquinas de un día · ${esc(x.nombre)}</h3>
+    <label>Día<input type="date" name="fecha" value="${fe0}"></label>
+    <span class="clab">Finca</span><div class="chips" data-chips="finca">${opsFincas().map(([v,t])=>`<button type="button" class="chip ${String(v)===String(fi0)?'on':''}" data-val="${esc(v)}">${esc(t)}</button>`).join('')}</div><input type="hidden" name="finca" value="${esc(fi0)}">
+    <span class="clab">Cuántas trajo de cada una</span><div id="mdL"></div>
+    <div class="acciones"><p id="mdT" class="mut" style="margin:0 0 6px"></p><div class="row" style="justify-content:flex-end"><button type="button" class="btn sec" onclick="$('#dlg').close()">Cancelar</button><button class="btn" id="fOk">Guardar</button></div></div>`;
+  const F=$('#frm'); activarChips(F); mejorarFechas(F,false); F.fecha.addEventListener('change',()=>{ const fj=jor(F.fecha.value||fe0)[0]?.finca_id; if(fj!=null){ F.finca.value=fj||''; F.querySelectorAll('[data-chips=finca] .chip').forEach(c=>c.classList.toggle('on',c.dataset.val===(fj||''))); } pinta(); }); F.finca.addEventListener('change',pinta); pinta();
+  F.onsubmit=async e=>{ e.preventDefault(); if(COLA.length){ toast('Primero tienen que subirse los apuntes pendientes'); vaciarCola(); return; }
+    const fe=F.fecha.value||fe0, fi=F.finca.value||null, fa=faena(fe), L=yaDe(fe,fi);
+    if(L.some(s=>s.pagado)&&!confirm('Algo de ese día ya está pagado. ¿Cambiarlo igualmente?')) return;
+    const filas=ex.map((m,i)=>({m,n:parseInt(F.querySelector(`[data-md="${i}"]`).value)||0})).filter(o=>o.n>0).map(({m,n})=>({fecha:fe, empresa_id:k==='empresas'?id:null, trabajador_id:k==='trabajadores'?id:null, finca_id:fi, kilos:null, concepto:`${m.nombre} ×${n}`, importe:Math.round(n*valorExtra(k,x,m,fa)*100)/100}));
+    $('#fOk').disabled=true;
+    if(L.length){ const {error}=await sb.from('olv_servicios').delete().in('id',L.map(s=>s.id)); if(error){ $('#fOk').disabled=false; toast('Error: '+error.message); return; } }
+    let nIds=[]; if(filas.length){ const r=await insertar('servicios',filas); if(!r.ok){ $('#fOk').disabled=false; toast('Error: '+r.error.message); return; } nIds=r.filas.map(f=>f.id); }
+    await cargar('servicios',[...L.map(s=>s.id),...nIds]); pintarCampanas(); $('#dlg').close(); render(); toast(filas.length?`Máquinas del ${fFecha(fe)} apuntadas: ${eur(filas.reduce((s,f)=>s+f.importe,0))}`:'Quitadas las máquinas de ese día'); };
+  if(!$('#dlg').open) $('#dlg').showModal(); }
 // Precios distintos por faena (p. ej. pestugar a 15 €/h y la aceituna por kilo)
 function htmlTarifas(k,x){ const T=x.tarifas||{}, esp=Object.entries(T).filter(([f,v])=>v&&v.modo&&Number(v.precio)>0);
   const base=k==='empresas'?tarifaDe({empresa_id:x.id},''):tarifaDe(x,'');
   return `<div class="card"><h2>Lo que cobra<span class="sp"></span><button class="btn sec sm" onclick="editarTarifas('${k}','${x.id}')">Precios por faena</button></h2>
     <p style="margin:0">Normalmente: <b>${txtTarifa(base)}</b>${k==='empresas'&&Number(x.iva_pct)?` + ${num(x.iva_pct)} % IVA`:''}</p>
     ${esp.length?`<table style="margin-top:6px">${esp.map(([f,v])=>`<tr><td>${esc(f)}</td><td class="n">${txtTarifa({modo:v.modo,precio:Number(v.precio)})}</td></tr>`).join('')}</table>`:'<p class="mut" style="margin:4px 0 0">El mismo precio para todas las faenas. Si en alguna cobra distinto (por hora, por jornal o a destajo por kilo), ponlo en «Precios por faena».</p>'}
-    <div class="row" style="margin-top:8px;align-items:baseline"><span style="flex:1">${(x.extras||[]).length?'Máquinas que trae: '+x.extras.map(m=>`<b>${esc(m.nombre)}</b> (${txtExtra(m)})`).join(', '):'<span class="mut">No cobra por traer máquinas.</span>'}</span><button class="btn sec sm" onclick="editarExtras('${k}','${x.id}')">Máquinas que trae</button></div></div>`; }
+    <div class="row" style="margin-top:8px;align-items:baseline"><span style="flex:1">${(x.extras||[]).length?'Máquinas que trae: '+x.extras.map(m=>`<b>${esc(m.nombre)}</b> (${txtExtra(m)})`).join(', '):'<span class="mut">No cobra por traer máquinas.</span>'}</span><span class="row" style="gap:6px">${(x.extras||[]).length?`<button class="btn sm" onclick="abrirMaquinasDia('${k}','${x.id}')">🚜 Apuntar un día</button>`:''}<button class="btn sec sm" onclick="editarExtras('${k}','${x.id}')">Máquinas que trae</button></span></div></div>`; }
 function editarTarifas(k,id){ const x=D[k].find(y=>y.id===id); if(!x) return; const T=x.tarifas||{};
   const base=k==='empresas'?tarifaDe({empresa_id:x.id},''):tarifaDe(x,'');
   const fa=[...new Set([...JOR_TAREAS.filter(f=>f!=='Día perdido'),...Object.keys(T)])];
