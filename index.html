@@ -173,7 +173,7 @@ details.adv{margin:4px 0 10px}details.adv summary{cursor:pointer;color:var(--olv
 
 <script>
 // ===== Configuración =====
-const VERSION = '3.15';
+const VERSION = '3.16';
 const VERSION_FECHA = '15 oct 2026';
 const CREDITOS = `Olivas v${VERSION} (${VERSION_FECHA}) · © 2026 Alfonso Carrascosa Martínez · Hecha con Claude (Anthropic)`;
 const SUPA_URL = 'https://kseyndjbmkaflpoqitsj.supabase.co';
@@ -699,8 +699,20 @@ async function repetirTarea(t){
   await insertar('tareas',{titulo:t.titulo, tipo:t.tipo, finca_id:t.finca_id, repetir_dias:t.repetir_dias, notas:t.notas, fecha:addDias(hoy(), t.repetir_dias)});
   await cargar('tareas');
 }
+// Tareas de varios días: «Hecho hoy» apunta solo ese día; la tarea se cierra al hacer el último (o al marcarla hecha en su ficha)
+const finTarea=t=>t.fecha_fin&&t.fecha_fin>t.fecha?t.fecha_fin:null;
+const diaEnCurso=t=>{ const fin=finTarea(t), h=hoy(); return fin&&h>=t.fecha&&h<=fin?h:null; };
 async function marcarHecha(id){
-  const t=D.tareas.find(x=>x.id===id);
+  const t=D.tareas.find(x=>x.id===id); if(!t) return;
+  const dia=diaEnCurso(t);
+  if(dia){ const antes=t.dias_hechos||[], hechos=[...new Set([...antes,dia])].sort(), todos=diasRango(t.fecha,finTarea(t)), fin=dia===finTarea(t)||todos.every(d=>hechos.includes(d));
+    const u={dias_hechos:hechos}; if(fin){ u.hecha=true; u.hecha_fecha=dia; }
+    const {error}=await sb.from('olv_tareas').update(u).eq('id',id);
+    if(error){ if(!sinRed(error)) toast('Error: '+error.message); return; }
+    await cargar('tareas'); render();
+    toast(fin?'Tarea terminada':`Hecho el día ${todos.indexOf(dia)+1} de ${todos.length}`, async()=>{ await sb.from('olv_tareas').update({dias_hechos:antes.length?antes:null,hecha:false,hecha_fecha:null}).eq('id',id); await cargar('tareas'); render(); });
+    jornalDeTarea({...t,fecha:dia,fecha_fin:null});
+    return; }
   const {error}=await sb.from('olv_tareas').update({hecha:true,hecha_fecha:hoy()}).eq('id',id);
   if(error){ if(!sinRed(error)) toast('Error: '+error.message); return; }
   const antes=new Set(D.tareas.map(x=>x.id));
@@ -833,10 +845,11 @@ function avisos(){
     else if(d<=90) out.push({c:d<=30?'bad':'',t:`Carné de fitosanitarios de <b>${esc(p.nombre)}</b> caduca el ${fFecha(p.cad)} (${d} días)`,ord:d,trab:p.id,tit:p.tit}); });
   D.tareas.filter(t=>!t.hecha).forEach(t=>{
     const d=difDias(h,t.fecha), fin=t.fecha_fin&&t.fecha_fin>t.fecha?t.fecha_fin:null, dFin=fin?difDias(h,fin):d;
-    if(fin&&d<=0&&dFin>=0) out.push({c:'',t:`Hoy, día ${1-d} de ${difDias(t.fecha,fin)+1}: <b>${esc(t.titulo)}</b>${t.finca_id?' · '+esc(fincaNom(t.finca_id)):''} (hasta el ${diaSemana(fin)})`,id:t.id,ord:0});
+    const nh=(t.dias_hechos||[]).length, yaHoy=(t.dias_hechos||[]).includes(h);
+    if(fin&&d<=0&&dFin>=0) out.push({c:'',t:`${yaHoy?'✓ Hoy hecho':'Hoy'}, día ${1-d} de ${difDias(t.fecha,fin)+1}: <b>${esc(t.titulo)}</b>${t.finca_id?' · '+esc(fincaNom(t.finca_id)):''} (hasta el ${diaSemana(fin)}${nh?`, llevas ${nh} ${nh===1?'día hecho':'días hechos'}`:''})`,id:t.id,ord:yaHoy?50:0,yaHoy});
     else if(dFin<0) out.push({c:'bad',t:`Tarea atrasada ${-dFin} día(s): <b>${esc(t.titulo)}</b> · ${esc(fincaNom(t.finca_id))}`,id:t.id,ord:dFin});
     else if(d<=u.aviso_dias) out.push({c:'',t:`${d===0?'Hoy':d===1?'Mañana':'El '+diaSemana(t.fecha)}: <b>${esc(t.titulo)}</b>${t.finca_id?' · '+esc(fincaNom(t.finca_id)):''}${fin?' · '+rangoTxt(t):''}`,id:t.id,ord:d});
-    const ult=out[out.length-1]; if(ult&&ult.id===t.id) ult.t=`<div class="row" style="flex-wrap:nowrap"><span style="flex:1">${ult.t}</span><button class="btn sec sm" data-hecha="${t.id}">Hecha</button></div>`;
+    const ult=out[out.length-1]; if(ult&&ult.id===t.id&&!ult.yaHoy) ult.t=`<div class="row" style="flex-wrap:nowrap"><span style="flex:1">${ult.t}</span><button class="btn sec sm" data-hecha="${t.id}">${diaEnCurso(t)&&h<fin?'Hecho hoy':'Hecha'}</button></div>`;
   });
   D.maquinas.filter(m=>m.activa&&esAplicacion(m)&&m.tipo!=='Mochila'&&m.fecha_inspeccion).forEach(m=>{
     const v=addDias(m.fecha_inspeccion,365*3), d=difDias(h,v);
@@ -1809,7 +1822,7 @@ function vFicha(){
     <div id="fTiempo" class="mut"></div>
     <div class="quick" style="margin:10px 0 0">${[['Gasto',"abrir('gastos')"],['Jornada','abrirParte()'],['Curación','abrirAplicacion()'],['Pesada',"abrir('pesadas')"],['Nota',"abrir('notas')"]].map(([t,fn])=>`<button onclick="${fn}"><b>+</b>${t}</button>`).join('')}</div></div>
   <div class="kpis"><div class="kpi"><span>Gastos ${esc(CAMP)}</span><b>${eur(g)}</b></div><div class="kpi"><span>Ingresos</span><b>${eur(i)}</b></div><div class="kpi"><span>Margen</span><b class="${i-g>=0?'pos':'neg'}">${eur(i-g)}</b></div><div class="kpi"><span>Kilos</span><b>${K?num(K.kilos):'—'}</b></div></div>
-  <div class="cols2"><div class="card"><h2>Qué toca aquí</h2>${htmlLabores(lab,4,true)}${lab.length>4?`<button class="btn sec sm" onclick="SUB.campo='labores';ir('campo')">Ver las ${lab.length}</button>`:''}${tar.length?`<b>Tareas</b>${tar.map(t=>`<div class="aviso click" data-ed="tareas:${t.id}"><div class="row" style="flex-wrap:nowrap"><span style="flex:1">${esc(t.titulo)} · ${fFecha(t.fecha)}</span><button class="btn sec sm" data-hecha="${t.id}">Hecha</button></div></div>`).join('')}`:''}</div>
+  <div class="cols2"><div class="card"><h2>Qué toca aquí</h2>${htmlLabores(lab,4,true)}${lab.length>4?`<button class="btn sec sm" onclick="SUB.campo='labores';ir('campo')">Ver las ${lab.length}</button>`:''}${tar.length?`<b>Tareas</b>${tar.map(t=>`<div class="aviso click" data-ed="tareas:${t.id}"><div class="row" style="flex-wrap:nowrap"><span style="flex:1">${esc(t.titulo)} · ${fFecha(t.fecha)}${finTarea(t)?' al '+fFecha(t.fecha_fin):''}${(t.dias_hechos||[]).length?` · ${t.dias_hechos.length} ${t.dias_hechos.length===1?'día hecho':'días hechos'}`:''}</span>${(t.dias_hechos||[]).includes(hoy())?'<span class="mut">✓ hoy</span>':`<button class="btn sec sm" data-hecha="${t.id}">${diaEnCurso(t)&&hoy()<t.fecha_fin?'Hecho hoy':'Hecha'}</button>`}</div></div>`).join('')}`:''}</div>
   <div class="card"><h2>Notas abiertas</h2>${htmlNotas(notas)}</div></div>
   ${htmlRecintos(f.id)}
   <div class="cols2"><div class="card"><h2>Últimas curaciones</h2>${apl.length?apl.map(a=>`<div class="lab click" onclick="abrirAplicacion(D.aplicaciones.find(x=>x.id==='${a.id}'))"><b>${fFecha(a.fecha)}</b> <span class="mut">${num(a.litros_total||0)} l</span><div>${esc(D.tratamientos.filter(t=>t.aplicacion_id===a.id).map(t=>t.producto).join(' + '))}</div></div>`).join(''):'<p class="mut">Ninguna apuntada.</p>'}</div>
@@ -2271,7 +2284,7 @@ function vCampo(){
     const l=D.tareas.filter(t=>t.hecha!==pend).sort((a,b)=>pend?a.fecha.localeCompare(b.fecha):(b.hecha_fecha||b.fecha).localeCompare(a.hecha_fecha||a.fecha));
     return tabs+`<div class="card"><h2>Tareas<span class="sp"></span><button class="btn sm" onclick="abrir('tareas')">+ Tarea</button></h2>${l.length?`<table>${l.map(t=>{const d=difDias(h,t.fecha_fin&&t.fecha_fin>t.fecha?t.fecha_fin:t.fecha); const col=!pend?'':d<0?'r':difDias(h,t.fecha)<=AJ.umb.aviso_dias?'a':'g';
       const RJ=pend?null:resumenJ(jornalesDeTarea(t).l);
-      return `<tr class="click" ${pend?`data-ed="tareas:${t.id}"`:`onclick="verTarea('${t.id}')"`}><td>${pend?`<span class="dot ${col}"></span>`:''}${esc(t.titulo)}<div class="mut">${esc(t.tipo||'')}${t.finca_id?' · '+esc(fincaNom(t.finca_id)):''}${t.repetir_dias?' · cada '+t.repetir_dias+' días':''}</div>${RJ&&RJ.p.length?`<div class="mut">👷 ${RJ.p.map(esc).join(', ')} · ${RJ.dias} ${RJ.dias===1?'día':'días'} · ${num(RJ.horas,1)} h · ${eur(RJ.imp)}${(()=>{ const fr=t.fecha_fin||t.hecha_fecha||t.fecha; const k=D.pesadas.filter(x=>x.fecha>=t.fecha&&x.fecha<=fr&&(!t.finca_id||x.finca_id===t.finca_id)).reduce((a,x)=>a+Number(x.kilos),0); return k?' · '+num(k)+' kg':''; })()}</div>`:''}</td><td class="n">${pend?(rangoTxt(t)||diaSemana(t.fecha)):fFecha(t.hecha_fecha||t.fecha)}${pend?`<div class="mut">${fFecha(t.fecha)}</div>`:''}</td>${pend?`<td class="n"><button class="btn sec sm" data-hecha="${t.id}">Hecha</button></td>`:''}</tr>`}).join('')}</table>`:`<p class="mut">${pend?'No hay tareas pendientes.':'Aún no hay tareas hechas.'}</p>`}
+      return `<tr class="click" ${pend?`data-ed="tareas:${t.id}"`:`onclick="verTarea('${t.id}')"`}><td>${pend?`<span class="dot ${col}"></span>`:''}${esc(t.titulo)}<div class="mut">${esc(t.tipo||'')}${t.finca_id?' · '+esc(fincaNom(t.finca_id)):''}${t.repetir_dias?' · cada '+t.repetir_dias+' días':''}${pend&&finTarea(t)?` · ${rangoTxt(t)}${(t.dias_hechos||[]).length?` · ${t.dias_hechos.length} de ${difDias(t.fecha,t.fecha_fin)+1} días hechos`:''}`:''}</div>${RJ&&RJ.p.length?`<div class="mut">👷 ${RJ.p.map(esc).join(', ')} · ${RJ.dias} ${RJ.dias===1?'día':'días'} · ${num(RJ.horas,1)} h · ${eur(RJ.imp)}${(()=>{ const fr=t.fecha_fin||t.hecha_fecha||t.fecha; const k=D.pesadas.filter(x=>x.fecha>=t.fecha&&x.fecha<=fr&&(!t.finca_id||x.finca_id===t.finca_id)).reduce((a,x)=>a+Number(x.kilos),0); return k?' · '+num(k)+' kg':''; })()}</div>`:''}</td><td class="n">${pend?(rangoTxt(t)||diaSemana(t.fecha)):fFecha(t.hecha_fecha||t.fecha)}${pend?`<div class="mut">${fFecha(t.fecha)}</div>`:''}</td>${pend?`<td class="n"><button class="btn sec sm" data-hecha="${t.id}">Hecha</button></td>`:''}</tr>`}).join('')}</table>`:`<p class="mut">${pend?'No hay tareas pendientes.':'Aún no hay tareas hechas.'}</p>`}
       <div class="row" style="margin-top:10px"><button class="btn sec sm" onclick="SUB.verHechas=!SUB.verHechas;render()">${pend?'Ver las hechas':'Ver las pendientes'}</button>${pend?'<button class="btn sec sm" onclick="ics()">Pasar avisos al calendario del móvil (.ics)</button>':''}</div></div>`+vReuniones();
   }
   return tabs+`<div class="card"><h2>Curaciones<span class="sp"></span><button class="btn sm" onclick="abrirCuaderno()">Cuaderno de campo</button></h2><p class="mut">Qué llevaba cada cuba, en qué finca y cuánto caldo. Sirve de registro para el cuaderno de campo.</p>${htmlTratamientos()}</div>${htmlCubas()}`;
