@@ -173,7 +173,7 @@ details.adv{margin:4px 0 10px}details.adv summary{cursor:pointer;color:var(--olv
 
 <script>
 // ===== Configuración =====
-const VERSION = '3.27';
+const VERSION = '3.29';
 const VERSION_FECHA = '15 oct 2026';
 const CREDITOS = `Olivas v${VERSION} (${VERSION_FECHA}) · © 2026 Alfonso Carrascosa Martínez · Hecha con Claude (Anthropic)`;
 const SUPA_URL = 'https://kseyndjbmkaflpoqitsj.supabase.co';
@@ -469,6 +469,7 @@ const S = {
     {k:'num_registro',l:'Nº de registro',adv:1},{k:'notas',l:'Notas',t:'area',adv:1},{k:'activo',l:'Lo sigo teniendo',t:'bool',def:true,adv:1}]},
   trabajadores:{tit:'Trabajador', otro:1, f:()=>[
     {k:'nombre',l:'Nombre',req:1,focus:1},{k:'empresa_id',l:'¿De quién es?',t:'chips',ops:[['','Mío'],...D.empresas.filter(e=>e.activa).map(e=>[e.id,e.nombre])],help:'Si es de una empresa, se cobra con el precio de la empresa'},
+    {k:'no_cobra',l:'No cobra (familia o acuerdo): sus jornadas se apuntan, pero no se le deben',t:'bool'},
     {k:'precio_dia',l:'Precio del jornal (€) — solo si es tuyo',t:'num'},
     {k:'horas_jornada',l:'Horas que tiene una jornada',t:'num',def:6.5},
     {k:'precio_hora',l:'Precio por hora (solo si cobra por horas)',t:'num',adv:1},
@@ -537,6 +538,7 @@ const S = {
     {k:'trabajador_id',l:'Trabajador',t:'sel',ops:opsTrab(),req:1},{k:'fecha',l:'Día',t:'date',req:1},
     {k:'horas',l:'Horas',t:'num',req:1},{k:'importe',l:'Importe (€)',t:'num',req:1},
     {k:'finca_id',l:'Finca',t:'chips',ops:opsFincas()},{k:'tarea',l:'Faena',t:'chips',ops:[['',''],...JOR_TAREAS.map(x=>[x,x])].slice(1)},
+    {k:'sin_cobro',l:'Este día no cobra (familia o acuerdo)',t:'bool'},
     {k:'pagado',l:'Pagado',t:'bool'},{k:'notas',l:'Notas',t:'area',adv:1}]},
 };
 
@@ -649,7 +651,7 @@ function abrir(k, reg=null, ini=null){
   }
   if(k==='jornales'){
     const calc=()=>{ const t=D.trabajadores.find(x=>x.id===$('[name=trabajador_id]').value); const h=pn($('[name=horas]').value); if(t&&h) $('[name=importe]').value=String(importeJornal(t,h,$('[name=tarea]')?.value)).replace('.',','); };
-    $('[name=horas]').addEventListener('input',calc); $('[name=trabajador_id]').addEventListener('change',calc); $('#frm [name=tarea]')?.addEventListener('change',calc);
+    $('[name=horas]').addEventListener('input',calc); $('[name=trabajador_id]').addEventListener('change',calc); $('#frm [name=tarea]')?.addEventListener('change',calc); $('#frm [name=sin_cobro]')?.addEventListener('change',e=>{ if(e.target.checked) $('[name=importe]').value='0'; else calc(); });
   }
   $('#dlg').showModal();
   const f=campos.find(c=>c.focus); if(f && !reg && !TACTIL) setTimeout(()=>$(`#frm [name=${f.k}]`)?.focus(),50);
@@ -674,7 +676,7 @@ async function guardar(k, reg, otro=false){
   if(k==='tareas'){ const dhI=$('#frm [name=_dh]'); if(dhI){ obj.dias_hechos=dhI.value?dhI.value.split(','):null; if(!obj.hecha&&obj.fecha_fin&&diasRango(obj.fecha,obj.fecha_fin).every(d=>(obj.dias_hechos||[]).includes(d))){ obj.hecha=true; obj.hecha_fecha=obj.fecha_fin; } }
     obj.hecha_fecha = obj.hecha ? (obj.hecha_fecha || reg?.hecha_fecha || hoy()) : null; if(obj.fecha_fin&&obj.fecha_fin<=obj.fecha) obj.fecha_fin=null; }
   if(k==='jornales'||k==='servicios'||k==='riego_pagos') obj.pagado_fecha = obj.pagado ? (reg?.pagado_fecha || hoy()) : null;
-  if(k==='jornales'){ const t=D.trabajadores.find(x=>x.id===obj.trabajador_id); obj.empresa_id = t&&t.empresa_id&&empresa(t.empresa_id) ? t.empresa_id : null; }
+  if(k==='jornales'){ const t=D.trabajadores.find(x=>x.id===obj.trabajador_id); obj.empresa_id = t&&t.empresa_id&&empresa(t.empresa_id) ? t.empresa_id : null; if(obj.sin_cobro) obj.importe=0; }
   document.querySelectorAll('#fOk,#fOtro').forEach(b=>b.disabled=true);
   if(k==='notas'&&!reg) await subirFotoNota(obj);
   if(k==='dias_perdidos'){ obj.coste=obj.coste||0; if(obj.hora_seco!=null) obj.hora_seco=Number(obj.hora_seco); await fotoTiempo(obj); }
@@ -951,7 +953,7 @@ function abrirParte(pre){ pre=pre||{};
     ${G.map(g=>`<span class="clab">${G.length>1?esc(g.nombre)+(g.e?` · ${FORMAS[g.e.forma_cobro]}`:''):'¿Quién ha venido?'}</span>
       <div class="chips pTrab" data-g="${g.id}">${g.trab.map(t=>`<button type="button" class="chip ${sel.has(t.id)?'on':''}" data-id="${t.id}">${esc(t.nombre)}</button>`).join('')}<button type="button" class="chip pTodos">Todos</button></div>
       ${g.e?`<label class="hidden" id="kgL_${g.id}">Kilos recogidos por ${esc(g.nombre)} (si ya los sabes)<input name="kg_${g.id}" inputmode="decimal"></label>`:''}`).join('')}
-    <div id="pKgP"></div><div id="pExt"></div>
+    <div id="pNC"></div><div id="pKgP"></div><div id="pExt"></div>
     ${pre.horas!=null?`<div class="aviso ok" style="margin:6px 0">⏱ Cronómetro: <b>${num(pre.horas,2)} h</b> de trabajo${pre.nota?`<div class="mut">${esc(pre.nota)}</div>`:''}</div>`:''}
     <span class="clab">Horas</span>${chips('modo',[['J','Jornada'],['M','Media'],['H','Otras…']],pre.horas!=null?'H':(ULT.j_modo||'J'))}
     <label id="pHorasL" class="${(pre.horas!=null||(ULT.j_modo||'J')==='H')?'':'hidden'}">Horas de cada uno<input name="horas" inputmode="decimal" value="${esc(pre.horas!=null?String(pre.horas).replace('.',','):(ULT.j_horas||''))}"></label>
@@ -976,10 +978,17 @@ function abrirParte(pre){ pre=pre||{};
   const pintaExt=ids=>{ F.querySelectorAll('[data-exn]').forEach(el=>EXV[el.dataset.exn]=el.value); const O=dueños(ids);
     $('#pExt').innerHTML=O.length?`<span class="clab">Máquinas que han traído (cuántas)</span>${O.map(({k,x})=>`<div class="row" style="gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:4px"><b style="min-width:80px">${esc(x.nombre)}</b>${x.extras.map((m,i)=>{ const key=x.id+'|'+i; return `<label class="row" style="gap:4px;margin:0;align-items:center">${esc(m.nombre)} <input data-exn="${key}" inputmode="numeric" style="width:44px" value="${esc(EXV[key]||'')}" placeholder="0"></label>`; }).join('')}</div>`).join('')}`:''; };
   const extras=ids=>dueños(ids).flatMap(({k,x})=>x.extras.map((m,i)=>{ const n=parseInt(F.querySelector(`[data-exn="${x.id}|${i}"]`)?.value)||0; return n>0?{k,x,m,n,imp:Math.round(n*valorExtra(k,x,m,fae())*100)/100}:null; }).filter(Boolean));
+  // los que no cobran (familia o acuerdo): sus jornadas se apuntan sin dinero
+  const NC=new Set(), vistosNC=new Set(); let ncOpen=false; const noCobra=id=>NC.has(id);
+  const pintaNC=ids=>{ ids.forEach(id=>{ if(!vistosNC.has(id)){ vistosNC.add(id); if(trab.find(t=>t.id===id)?.no_cobra) NC.add(id); } });
+    const L=ids.map(id=>trab.find(t=>t.id===id)).filter(t=>t&&!(t.empresa_id&&empresa(t.empresa_id)&&!empresa(t.empresa_id).cuadrilla));
+    $('#pNC').innerHTML=L.length?`<details ${ncOpen||L.some(t=>NC.has(t.id))?'open':''} style="margin:4px 0"><summary class="mut">¿Alguno no cobra hoy? ${L.filter(t=>NC.has(t.id)).length?`(${L.filter(t=>NC.has(t.id)).map(t=>esc(t.nombre)).join(', ')})`:''}</summary><div class="chips" style="margin-top:4px">${L.map(t=>`<button type="button" class="chip ${NC.has(t.id)?'on':''}" data-nc="${t.id}">${NC.has(t.id)?'🚫 ':''}${esc(t.nombre)}</button>`).join('')}</div></details>`:'';
+    const dt=$('#pNC details'); if(dt) dt.ontoggle=()=>{ ncOpen=dt.open; };
+    $('#pNC').querySelectorAll('[data-nc]').forEach(b=>b.onclick=()=>{ const id=b.dataset.nc; NC.has(id)?NC.delete(id):NC.add(id); resumen(); }); };
   const resumen=()=>{
-    const ids=marcados(); pintaKgP(ids); pintaExt(ids);
+    const ids=marcados(); pintaNC(ids); pintaKgP(ids); pintaExt(ids);
     G.filter(g=>g.e).forEach(g=>$(`#kgL_${g.id}`).classList.toggle('hidden',!(empKilo(g.e)&&g.trab.some(t=>ids.includes(t.id)))));
-    let tot=ids.reduce((s,id)=>{ const t=trab.find(x=>x.id===id); return s+importeJornal(t,horasDe(t),fae(),kgP(id)); },0);
+    let tot=ids.reduce((s,id)=>{ const t=trab.find(x=>x.id===id); return s+(noCobra(id)?0:importeJornal(t,horasDe(t),fae(),kgP(id))); },0);
     tot+=kgEmp().reduce((s,x)=>s+conIva(x.kg*x.precio,x.e),0)+extras(ids).reduce((s,x)=>s+x.imp,0);
     const dsel=multi?[...F.querySelectorAll('#pDias .chip.on')].map(b=>b.dataset.f):[F.fecha.value]; const rep=ids.filter(id=>D.jornales.some(j=>j.trabajador_id===id&&dsel.includes(j.fecha))).map(trabNom);
     $('#pRes').innerHTML = ids.length ? `<b>${ids.length} ${ids.length===1?'persona':'personas'} · ${eur(tot)}</b>${rep.length?`<br><span class="neg">Ya tienen jornada ${multi?'alguno de esos días':'ese día'}: ${esc(rep.join(', '))}</span>`:''}` : 'Toca a quien haya venido.';
@@ -988,7 +997,7 @@ function abrirParte(pre){ pre=pre||{};
   F.querySelectorAll('.pTodos').forEach(b=>b.onclick=()=>{ const all=b.parentElement.querySelectorAll('.chip[data-id]'); const on=[...all].every(x=>x.classList.contains('on')); all.forEach(x=>x.classList.toggle('on',!on)); resumen(); });
   F.modo.addEventListener('change',()=>{ $('#pHorasL').classList.toggle('hidden',F.modo.value!=='H'); if(F.modo.value==='H') F.horas.focus(); resumen(); });
   F.oninput=e=>{ if(e.target.dataset.kgp||e.target.dataset.exn) return pintaTot(); resumen(); }; F.fecha.addEventListener('change',resumen); F.tarea.addEventListener('change',resumen);
-  const pintaTot=()=>{ const ids=marcados(); let tot=ids.reduce((s,id)=>{ const t=trab.find(x=>x.id===id); return s+importeJornal(t,horasDe(t),fae(),kgP(id)); },0)+kgEmp().reduce((s,x)=>s+conIva(x.kg*x.precio,x.e),0)+extras(ids).reduce((s,x)=>s+x.imp,0); const b=$('#pRes b'); if(b) b.textContent=`${ids.length} ${ids.length===1?'persona':'personas'} · ${eur(tot)}`; };
+  const pintaTot=()=>{ const ids=marcados(); let tot=ids.reduce((s,id)=>{ const t=trab.find(x=>x.id===id); return s+(noCobra(id)?0:importeJornal(t,horasDe(t),fae(),kgP(id))); },0)+kgEmp().reduce((s,x)=>s+conIva(x.kg*x.precio,x.e),0)+extras(ids).reduce((s,x)=>s+x.imp,0); const b=$('#pRes b'); if(b) b.textContent=`${ids.length} ${ids.length===1?'persona':'personas'} · ${eur(tot)}`; };
   F.querySelectorAll('[data-qf]').forEach(b=>b.addEventListener('click',resumen));
   $('#fCancel').onclick=()=>$('#dlg').close();
   F.onsubmit=async e=>{
@@ -999,7 +1008,7 @@ function abrirParte(pre){ pre=pre||{};
     const fecha=F.fecha.value||hoy(), finca=F.finca_id.value||null;
     const fechas=multi?[...F.querySelectorAll('#pDias .chip.on')].map(b=>b.dataset.f):[fecha];
     if(!fechas.length){ toast('Elige algún día'); return; }
-    const filas=fechas.flatMap(fecha=>ids.map(id=>{ const t=trab.find(x=>x.id===id); const h=horasDe(t); return {fecha, trabajador_id:id, empresa_id:(t.empresa_id&&empresa(t.empresa_id))?t.empresa_id:null, finca_id:finca, horas:h, tarea:F.tarea.value||null, importe:importeJornal(t,h,F.tarea.value,kgP(id)), ...(tarifaDe(t,F.tarea.value).modo==='kilo'&&!(t.empresa_id&&empresa(t.empresa_id))&&kgP(id)>0?{kilos:kgP(id)}:{}), ...(pre.tarea_id?{tarea_id:pre.tarea_id}:{})}; }));
+    const filas=fechas.flatMap(fecha=>ids.map(id=>{ const t=trab.find(x=>x.id===id); const h=horasDe(t); return {fecha, trabajador_id:id, empresa_id:(t.empresa_id&&empresa(t.empresa_id))?t.empresa_id:null, finca_id:finca, horas:h, tarea:F.tarea.value||null, importe:noCobra(id)?0:importeJornal(t,h,F.tarea.value,kgP(id)), ...(noCobra(id)?{sin_cobro:true}:{}), ...(tarifaDe(t,F.tarea.value).modo==='kilo'&&!(t.empresa_id&&empresa(t.empresa_id))&&kgP(id)>0?{kilos:kgP(id)}:{}), ...(pre.tarea_id?{tarea_id:pre.tarea_id}:{})}; }));
     const serv=[...kgEmp().map(x=>({fecha:fechas[0], empresa_id:x.e.id, finca_id:finca, kilos:x.kg, importe:Math.round(conIva(x.kg*x.precio,x.e)*100)/100})),
       ...fechas.flatMap(fe=>extras(ids).map(x=>({fecha:fe, empresa_id:x.k==='empresas'?x.x.id:null, trabajador_id:x.k==='trabajadores'?x.x.id:null, finca_id:finca, kilos:null, concepto:`${x.m.nombre} ×${x.n}`, importe:x.imp})))];
     $('#fOk').disabled=true;
@@ -1021,7 +1030,7 @@ const svNom=x=>x.empresa_id?empNom(x.empresa_id):trabNom(x.trabajador_id);
 const svTxt=x=>x.concepto||(Number(x.kilos)?num(x.kilos)+' kg recogidos':'');
 function claveDeuda(j){ return j.empresa_id ? 'e:'+j.empresa_id : 't:'+j.trabajador_id; }
 function pendientes(){ const p={}; const add=(k,v)=>p[k]=(p[k]||0)+Number(v);
-  D.jornales.filter(j=>!j.pagado).forEach(j=>add(claveDeuda(j),j.importe));
+  D.jornales.filter(j=>!j.pagado&&!j.sin_cobro).forEach(j=>add(claveDeuda(j),j.importe));
   D.servicios.filter(s=>!s.pagado).forEach(s=>add(claveServ(s),s.importe));
   D.adelantos.filter(a=>!a.liquidado).forEach(a=>add(claveAdel(a),-aCuenta(a)));
   Object.keys(p).forEach(k=>{ p[k]=Math.round(p[k]*100)/100; if(!p[k]) delete p[k]; });
@@ -1032,7 +1041,7 @@ function claveAdel(a){ return a.empresa_id ? 'e:'+a.empresa_id : 't:'+a.trabajad
 const aCuenta=a=>Math.max(0,Math.round((Number(a.importe)-Number(a.aplicado||0))*100)/100);
 const adelPend=clave=>D.adelantos.filter(a=>!a.liquidado&&aCuenta(a)>0&&claveAdel(a)===clave);
 // Reparte un pago entre los días sin pagar de esa persona, del más antiguo al más nuevo, hasta la fecha del pago
-function repartoPago(tid, fecha, imp){ const js=D.jornales.filter(j=>j.trabajador_id===tid&&!j.pagado&&j.fecha<=fecha).sort((a,b)=>a.fecha.localeCompare(b.fecha)||String(a.id).localeCompare(String(b.id)));
+function repartoPago(tid, fecha, imp){ const js=D.jornales.filter(j=>j.trabajador_id===tid&&!j.pagado&&!j.sin_cobro&&j.fecha<=fecha).sort((a,b)=>a.fecha.localeCompare(b.fecha)||String(a.id).localeCompare(String(b.id)));
   let q=imp; const cub=[]; for(const j of js){ const v=Number(j.importe)||0; if(v-q>0.004) break; q=Math.round((q-v)*100)/100; cub.push(j); }
   return {cub, aplicado:Math.round((imp-q)*100)/100, sobra:q}; }
 function abrirAdelanto(clave, trab){
@@ -1052,7 +1061,7 @@ function abrirAdelanto(clave, trab){
     <div class="acciones"><p id="adRes" class="mut" style="margin:0 0 6px"></p><div class="row" style="justify-content:flex-end"><button type="button" class="btn sec" onclick="$('#dlg').close()">Cancelar</button><button class="btn" id="fOk">Guardar</button></div></div>`;
   const F=$('#frm'); activarChips(F); mejorarFechas(F,false);
   const inp=tid=>F.querySelector(`[data-pg="${tid}"]`);
-  const debe=tid=>{ const fe=F.fecha.value||hoy(); return Math.round(D.jornales.filter(j=>j.trabajador_id===tid&&!j.pagado&&j.fecha<=fe).reduce((a,j)=>a+Number(j.importe),0)*100)/100; };
+  const debe=tid=>{ const fe=F.fecha.value||hoy(); return Math.round(D.jornales.filter(j=>j.trabajador_id===tid&&!j.pagado&&!j.sin_cobro&&j.fecha<=fe).reduce((a,j)=>a+Number(j.importe),0)*100)/100; };
   const pinta=()=>{ const fe=F.fecha.value||hoy(); let n=0, tot=0;
     gente.forEach(t=>{ const dv=debe(t.id); F.querySelector(`[data-deb="${t.id}"]`).textContent=dv?eur(dv):'—'; const v=pn(inp(t.id).value), c=F.querySelector(`[data-cub="${t.id}"]`);
       if(v>0){ n++; tot+=v; const R=repartoPago(t.id,fe,v); c.textContent=`${R.cub.length?`paga ${R.cub.map(j=>fFecha(j.fecha).slice(0,5)).join(', ')}`:'no cubre ningún día entero'}${R.sobra>0?` · ${eur(R.sobra)} a cuenta`:''}`; } else c.textContent=''; });
@@ -1093,7 +1102,7 @@ function pagarRenta(fid){ const r=rentas().find(x=>x.f.id===fid); if(!r) return;
 function pagar(clave){
   if(COLA.length){ toast('Primero tienen que subirse los apuntes pendientes'); vaciarCola(); return; }
   const [tipo,id]=clave.split(':'); const nom = tipo==='e'?empNom(id):trabNom(id);
-  const js=D.jornales.filter(j=>!j.pagado&&claveDeuda(j)===clave), ss=D.servicios.filter(x=>!x.pagado&&claveServ(x)===clave), ad=adelPend(clave);
+  const js=D.jornales.filter(j=>!j.pagado&&!j.sin_cobro&&claveDeuda(j)===clave), ss=D.servicios.filter(x=>!x.pagado&&claveServ(x)===clave), ad=adelPend(clave);
   const fechas=[...new Set([...js,...ss].map(x=>x.fecha))].sort(); if(!fechas.length&&!ad.length) return;
   const dom=(()=>{ const d=new Date(hoy()+'T12:00'); d.setDate(d.getDate()-((d.getDay()+7)%7||7)); return d.toISOString().slice(0,10); })(); // domingo pasado
   const cuenta=hasta=>{ const J=js.filter(j=>j.fecha<=hasta), S=ss.filter(x=>x.fecha<=hasta), tA=ad.reduce((a,x)=>a+aCuenta(x),0), bruto=J.reduce((a,j)=>a+Number(j.importe),0)+S.reduce((a,x)=>a+Number(x.importe),0); return {J,S,bruto,tA,neto:Math.round((bruto-tA)*100)/100}; };
@@ -1169,7 +1178,7 @@ function vJornales(){
   ${filtros}
   ${ver==='faena'?htmlPorFaena(lL,svL):`  <div class="card">${dias.length?dias.map((d,di)=>{ const js=lL.filter(j=>j.fecha===d), ss=svL.filter(x=>x.fecha===d); const [y,m,dd]=d.split('-').map(Number);
     const G={}; js.forEach(j=>{ const k=(j.tarea||'')+'|'+(j.finca_id||''); (G[k]=G[k]||[]).push(j); }); Object.values(G).forEach(x=>x.sort(porNombre));
-    return `<details ${di<2?'open':''} class="jDia"><summary class="grp" style="cursor:pointer">${DIAS[new Date(y,m-1,dd).getDay()]} ${fFecha(d)} · ${new Set(js.map(j=>j.trabajador_id)).size} ${new Set(js.map(j=>j.trabajador_id)).size===1?'persona':'personas'} · ${eur(js.reduce((a,j)=>a+Number(j.importe),0)+ss.reduce((a,x)=>a+Number(x.importe),0))}<div style="font-weight:400;font-size:13px">${[...new Set(js.map(j=>j.tarea||'Sin faena'))].map(esc).join(', ')}${ss.length?' · kilos de empresa':''}</div></summary>${Object.entries(G).map(([k,g])=>`<div class="row click" style="flex-wrap:nowrap;margin:8px 0 2px;padding:4px 8px;border-left:3px solid var(--olv);background:color-mix(in srgb,var(--olv) 8%,transparent);border-radius:4px" onclick="editarGrupoJ('${d}','${encodeURIComponent(k).replace(/'/g,'%27')}')"><b style="flex:1;font-size:14px">${esc(g[0].tarea||'Sin faena')} · ${esc(fincaNom(g[0].finca_id))}</b><span class="mut" style="font-size:13px">${g.length} · ${eur(g.reduce((a,j)=>a+Number(j.importe),0))} ✏️</span></div><table>${g.map(j=>`<tr class="click" data-ed="jornales:${j.id}"><td>${esc(trabNom(j.trabajador_id))}${j.empresa_id?`<div class="mut">${esc(empNom(j.empresa_id))}</div>`:''}</td><td class="n" style="width:56px">${num(j.horas,1)} h</td><td class="n" style="width:84px">${eur(j.importe)}${j.pagado?'<div class="pos" style="font-size:12px">pagado</div>':''}</td></tr>`).join('')}</table>`).join('')}<table>${ss.map(x=>`<tr class="click" data-ed="servicios:${x.id}"><td>${esc(svNom(x))}<div class="mut">${esc(svTxt(x))} · ${esc(fincaNom(x.finca_id))}</div></td><td class="n">${Number(x.kilos)?num(x.kilos)+' kg':'🚜'}</td><td class="n">${eur(x.importe)}${x.pagado?'<div class="pos" style="font-size:12px">pagado</div>':''}</td></tr>`).join('')}</table></details>`; }).join('')+(diasT.length>nD?`<button class="btn sec" style="width:100%;margin-top:8px" onclick="SUB.jDias=${nD+20};render()">Ver ${Math.min(20,diasT.length-nD)} días más (quedan ${diasT.length-nD})</button>`:''):'<p class="mut">Aún no hay jornadas en esta campaña.</p>'}</div>`}
+    return `<details ${di<2?'open':''} class="jDia"><summary class="grp" style="cursor:pointer">${DIAS[new Date(y,m-1,dd).getDay()]} ${fFecha(d)} · ${new Set(js.map(j=>j.trabajador_id)).size} ${new Set(js.map(j=>j.trabajador_id)).size===1?'persona':'personas'} · ${eur(js.reduce((a,j)=>a+Number(j.importe),0)+ss.reduce((a,x)=>a+Number(x.importe),0))}<div style="font-weight:400;font-size:13px">${[...new Set(js.map(j=>j.tarea||'Sin faena'))].map(esc).join(', ')}${ss.length?' · kilos de empresa':''}</div></summary>${Object.entries(G).map(([k,g])=>`<div class="row click" style="flex-wrap:nowrap;margin:8px 0 2px;padding:4px 8px;border-left:3px solid var(--olv);background:color-mix(in srgb,var(--olv) 8%,transparent);border-radius:4px" onclick="editarGrupoJ('${d}','${encodeURIComponent(k).replace(/'/g,'%27')}')"><b style="flex:1;font-size:14px">${esc(g[0].tarea||'Sin faena')} · ${esc(fincaNom(g[0].finca_id))}</b><span class="mut" style="font-size:13px">${g.length} · ${eur(g.reduce((a,j)=>a+Number(j.importe),0))} ✏️</span></div><table>${g.map(j=>`<tr class="click" data-ed="jornales:${j.id}"><td>${esc(trabNom(j.trabajador_id))}${j.empresa_id?`<div class="mut">${esc(empNom(j.empresa_id))}</div>`:''}</td><td class="n" style="width:56px">${num(j.horas,1)} h</td><td class="n" style="width:84px">${j.sin_cobro?'<span class="mut">no cobra</span>':eur(j.importe)}${j.pagado&&!j.sin_cobro?'<div class="pos" style="font-size:12px">pagado</div>':''}</td></tr>`).join('')}</table>`).join('')}<table>${ss.map(x=>`<tr class="click" data-ed="servicios:${x.id}"><td>${esc(svNom(x))}<div class="mut">${esc(svTxt(x))} · ${esc(fincaNom(x.finca_id))}</div></td><td class="n">${Number(x.kilos)?num(x.kilos)+' kg':'🚜'}</td><td class="n">${eur(x.importe)}${x.pagado?'<div class="pos" style="font-size:12px">pagado</div>':''}</td></tr>`).join('')}</table></details>`; }).join('')+(diasT.length>nD?`<button class="btn sec" style="width:100%;margin-top:8px" onclick="SUB.jDias=${nD+20};render()">Ver ${Math.min(20,diasT.length-nD)} días más (quedan ${diasT.length-nD})</button>`:''):'<p class="mut">Aún no hay jornadas en esta campaña.</p>'}</div>`}
   ${!dp.length?`<p style="text-align:center;margin:4px 0 12px"><a href="#" onclick="event.preventDefault();abrir('dias_perdidos')">+ Apuntar un día perdido (lluvia, avería…)</a></p>`:''}${dp.length?`<details class="card"><summary><b>Días perdidos</b> <span class="mut">${dp.length} · ${eur(dp.reduce((a,x)=>a+Number(x.coste)+vjDe(x.id),0)+lL.filter(j=>j.tarea==='Día perdido').reduce((a,j)=>a+Number(j.importe),0))}</span></summary><table>${dp.map(x=>`<tr class="click" data-ed="dias_perdidos:${x.id}"><td>${fFecha(x.fecha)} · ${esc(fincaNom(x.finca_id))}<div class="mut">${esc(x.motivo)}${x.hora_seco!=null?' · se podía a las '+fHora(Number(x.hora_seco)):''}${x.pred_seco!=null&&x.motivo==='Mojada'?' · la app calculaba '+fHora(Number(x.pred_seco)):''}</div></td><td class="n">${(Number(x.coste)||0)+vjDe(x.id)?eur((Number(x.coste)||0)+vjDe(x.id)):''}${vjDe(x.id)?`<div class="mut">viaje ${eur(vjDe(x.id))}</div>`:''}</td></tr>`).join('')}</table><p class="mut">El total incluye las jornadas pagadas con la faena «Día perdido».</p><button class="btn sec sm" onclick="abrir('dias_perdidos')">+ Día perdido</button></details>`:''}`;
 }
 // Libreta agrupada por faena: cuánto se ha ido en cada tipo de trabajo y qué días
@@ -1195,7 +1204,7 @@ function editarGrupoJ(fecha,clave){ clave=decodeURIComponent(clave); const [tare
   const notas0=[...new Set(g.map(j=>j.notas).filter(Boolean))];
   $('#frm').oninput=null; $('#frm').onchange=null;
   $('#frm').innerHTML=`<h3>${esc(tarea||'Sin faena')} · ${esc(fincaNom(finca||null))}</h3><p class="mut">${fFecha(fecha)} · ${g.length} ${g.length===1?'persona':'personas'}. Cambia las horas o el dinero de cada uno, quita con ✕ al que no vino o añade abajo a quien faltaba.</p>
-    <table class="gjT"><tr><th>Quién</th><th style="width:58px">Horas</th><th style="width:70px">€</th><th style="width:28px"></th></tr>${g.map(j=>`<tr data-gr="${j.id}"><td>${esc(trabNom(j.trabajador_id))}${j.pagado?' <span class="tag">pagado</span>':''}</td><td><input data-gh="${j.id}" inputmode="decimal" value="${fmt(Number(j.horas)||0)}" style="width:52px" ${j.pagado?'disabled':''}></td><td><input data-gi="${j.id}" inputmode="decimal" value="${fmt(Number(j.importe)||0)}" style="width:64px" ${j.pagado?'disabled':''}></td><td><button type="button" class="btn sec sm" data-gx="${j.id}" title="Quitar" style="padding:4px 8px">✕</button></td></tr>`).join('')}</table>
+    <table class="gjT"><tr><th>Quién</th><th style="width:58px">Horas</th><th style="width:70px">€</th><th style="width:28px"></th></tr>${g.map(j=>`<tr data-gr="${j.id}"><td>${esc(trabNom(j.trabajador_id))}${j.sin_cobro?' <span class="tag">no cobra</span>':j.pagado?' <span class="tag">pagado</span>':''}</td><td><input data-gh="${j.id}" inputmode="decimal" value="${fmt(Number(j.horas)||0)}" style="width:52px" ${j.pagado?'disabled':''}></td><td><input data-gi="${j.id}" inputmode="decimal" value="${fmt(Number(j.importe)||0)}" style="width:64px" ${j.pagado?'disabled':''}></td><td><button type="button" class="btn sec sm" data-gx="${j.id}" title="Quitar" style="padding:4px 8px">✕</button></td></tr>`).join('')}</table>
     ${otros.length?`<details style="margin:8px 0" ${otros.length<=6?'':''}><summary><b>+ Añadir a alguien que vino</b></summary><div class="chips" id="gjAdd">${otros.map(t=>`<button type="button" class="chip" data-add="${t.id}">${esc(t.nombre)}${yaEseDia.has(t.id)?' ·otra faena':''}</button>`).join('')}</div><p class="mut" style="margin:0">Se le apuntan ${fmt(hRef)} h y su jornal; luego lo cambias en la tabla si hace falta.</p></details>`:''}
     <details style="margin:8px 0"><summary><b>Cambiar a todos a la vez</b></summary>
     <div class="grid2"><label>Horas que echaron<input name="horas" inputmode="decimal" placeholder="no cambiar"></label><label>Lo que cobra cada uno (€)<input name="precio" inputmode="decimal" placeholder="no cambiar"></label></div>
@@ -1215,7 +1224,7 @@ function editarGrupoJ(fecha,clave){ clave=decodeURIComponent(clave); const [tare
   const tocadoI=new Set();
   const editable=j=>!j.pagado||F.pag.value==='no';
   const aplicarTodos=()=>{ const pr=pn(F.precio.value), hT=pn(F.horas.value);
-    g.filter(editable).forEach(j=>{ if(ok(hT)) inH(j.id).value=fmt(hT); if(ok(pr)) inI(j.id).value=fmt(pr); else if(ok(hT)&&!tocadoI.has(j.id)) inI(j.id).value=fmt(pagoJ(j,hT)); });
+    g.filter(editable).forEach(j=>{ if(ok(hT)) inH(j.id).value=fmt(hT); if(j.sin_cobro) return; if(ok(pr)) inI(j.id).value=fmt(pr); else if(ok(hT)&&!tocadoI.has(j.id)) inI(j.id).value=fmt(pagoJ(j,hT)); });
     nuevos.forEach(n=>{ if(ok(hT)) n.h=hT; n.imp=ok(pr)?pr:importeJornal(D.trabajadores.find(t=>t.id===n.tid)||{},n.h,tarea); }); pintaNuevos(); };
   g.forEach(j=>{ inH(j.id).oninput=()=>{ const h=pn(inH(j.id).value); if(ok(h)&&!tocadoI.has(j.id)) inI(j.id).value=fmt(pagoJ(j,h)); pinta(); };
     inI(j.id).oninput=()=>{ tocadoI.add(j.id); pinta(); };
@@ -1228,7 +1237,7 @@ function editarGrupoJ(fecha,clave){ clave=decodeURIComponent(clave); const [tare
     tabla.querySelectorAll('[data-nx]').forEach(el=>el.onclick=()=>{ const n=nuevos.splice(+el.dataset.nx,1)[0]; const b=F.querySelector(`[data-add="${n.tid}"]`); if(b) b.classList.remove('hidden'); pintaNuevos(); pinta(); });
   };
   F.querySelectorAll('[data-add]').forEach(b=>b.onclick=()=>{ const t=D.trabajadores.find(x=>x.id===b.dataset.add); const hT=pn(F.horas.value), h=ok(hT)?hT:hRef, pr=pn(F.precio.value);
-    nuevos.push({tid:t.id,h,imp:ok(pr)?pr:importeJornal(t,h,tarea)}); b.classList.add('hidden'); pintaNuevos(); pinta(); });
+    nuevos.push({tid:t.id,h,imp:t.no_cobra?0:ok(pr)?pr:importeJornal(t,h,tarea),nc:!!t.no_cobra}); b.classList.add('hidden'); pintaNuevos(); pinta(); });
   const calc=()=>g.map(j=>{ const h=pn(inH(j.id).value), imp=pn(inI(j.id).value); return {j,h:ok(h)?h:Number(j.horas)||0,imp:ok(imp)?imp:Number(j.importe)}; });
   const pinta=()=>{ const L=calc().filter(x=>!quitar.has(x.j.id)), t=L.reduce((a,x)=>a+x.imp,0)+nuevos.reduce((a,n)=>a+n.imp,0), n=L.length+nuevos.length;
     g.forEach(j=>{ const d=!editable(j); inH(j.id).disabled=d; inI(j.id).disabled=d; });
@@ -1250,7 +1259,7 @@ function editarGrupoJ(fecha,clave){ clave=decodeURIComponent(clave); const [tare
     // los cambios iguales van juntos en una sola llamada, y todo a la vez
     const lotes={}; cambios.forEach(c=>{ const k=JSON.stringify(c.u); (lotes[k]=lotes[k]||[]).push(c.id); });
     const tid0=g.find(j=>j.tarea_id)?.tarea_id||null;
-    const filasN=nuevos.map(n=>{ const t=D.trabajadores.find(x=>x.id===n.tid); return {id:nuevoId(), fecha:nfe, trabajador_id:n.tid, empresa_id:t?.empresa_id&&empresa(t.empresa_id)?t.empresa_id:null, finca_id:nf, horas:n.h, tarea:nt, importe:n.imp, notas:nota||null, ...(tid0?{tarea_id:tid0}:{}), ...(pag==='si'?{pagado:true,pagado_fecha:hoy()}:{})}; });
+    const filasN=nuevos.map(n=>{ const t=D.trabajadores.find(x=>x.id===n.tid); return {id:nuevoId(), fecha:nfe, trabajador_id:n.tid, empresa_id:t?.empresa_id&&empresa(t.empresa_id)?t.empresa_id:null, finca_id:nf, horas:n.h, tarea:nt, importe:n.imp, ...(n.nc?{sin_cobro:true}:{}), notas:nota||null, ...(tid0?{tarea_id:tid0}:{}), ...(pag==='si'?{pagado:true,pagado_fecha:hoy()}:{})}; });
     const res=await Promise.all([...Object.entries(lotes).map(([k,ids])=>sb.from('olv_jornales').update(JSON.parse(k)).in('id',ids)),
       ...(quitar.size?[sb.from('olv_jornales').delete().in('id',[...quitar])]:[]), ...(filasN.length?[sb.from('olv_jornales').insert(filasN)]:[])]);
     const mal=res.find(r=>r.error);
@@ -2056,7 +2065,7 @@ function cabFicha(k,id){ return `<div class="row" style="margin-bottom:10px"><bu
 const telA=t=>{ const n=telLimpio(t||''); return n?` · <a href="tel:${n}">📞 ${esc(t)}</a>`:''; };
 // Lo de una persona en la campaña: días, ganado, pagado, lo que queda
 function cuentaPersona(tid){ const [ini,fin]=campRango(CAMP), js=D.jornales.filter(j=>j.trabajador_id===tid), jc=js.filter(j=>j.fecha>=ini&&j.fecha<=fin);
-  const sin=js.filter(j=>!j.pagado).sort((a,b)=>b.fecha.localeCompare(a.fecha)), aC=D.adelantos.filter(a=>a.trabajador_id===tid&&!a.liquidado).reduce((s,a)=>s+aCuenta(a),0);
+  const sin=js.filter(j=>!j.pagado&&!j.sin_cobro).sort((a,b)=>b.fecha.localeCompare(a.fecha)), aC=D.adelantos.filter(a=>a.trabajador_id===tid&&!a.liquidado).reduce((s,a)=>s+aCuenta(a),0);
   const svs=D.servicios.filter(x=>claveServ(x)==='t:'+tid), svC=svs.filter(x=>x.fecha>=ini&&x.fecha<=fin), svS=svs.filter(x=>!x.pagado);
   const gan=jc.reduce((s,j)=>s+Number(j.importe),0)+svC.reduce((s,x)=>s+Number(x.importe),0), pag=jc.filter(j=>j.pagado).reduce((s,j)=>s+Number(j.importe),0)+svC.filter(x=>x.pagado).reduce((s,x)=>s+Number(x.importe),0), deb=sin.reduce((s,j)=>s+Number(j.importe),0)+svS.reduce((s,x)=>s+Number(x.importe),0);
   return {js,jc,sin,svS,svC,aC,gan,pag,deb,queda:Math.round((deb-aC)*100)/100,dias:new Set(jc.map(j=>j.fecha)).size,horas:jc.reduce((s,j)=>s+Number(j.horas||0),0)}; }
@@ -2064,7 +2073,7 @@ function htmlPagosDe(filtro){ const P=D.adelantos.filter(filtro).sort((a,b)=>b.f
   return P.length?`<table>${P.slice(0,20).map(a=>`<tr><td>💶 ${fFecha(a.fecha)} · ${esc(trabNom(a.trabajador_id))}<div class="mut">${(a.jornales||[]).length?`pagó ${a.jornales.length} ${a.jornales.length===1?'día':'días'}`:''}${aCuenta(a)>0&&!a.liquidado?`${(a.jornales||[]).length?' · ':''}${eur(aCuenta(a))} a cuenta`:''}${a.notas?' · '+esc(a.notas):''}</div></td><td class="n">${eur(a.importe)}<div><a href="#" onclick="event.preventDefault();borrarAdelanto('${a.id}')">quitar</a></div></td></tr>`).join('')}</table>`:'<p class="mut">Ningún pago apuntado.</p>'; }
 function htmlPagadosDe(js){ const pg={}; js.filter(j=>j.pagado).forEach(j=>{ const k=j.pagado_fecha||j.fecha; (pg[k]=pg[k]||[]).push(j); }); const k=Object.keys(pg).sort().reverse().slice(0,10);
   return k.length?`<table>${k.map(f=>`<tr><td>Pagado el ${fFecha(f)}<div class="mut">${pg[f].length} ${pg[f].length===1?'jornada':'jornadas'}${new Set(pg[f].map(j=>j.trabajador_id)).size>1?': '+[...new Set(pg[f].map(j=>trabNom(j.trabajador_id)))].sort((a,b)=>a.localeCompare(b,'es',{numeric:true})).map(esc).join(', '):` del ${fFecha(pg[f].map(j=>j.fecha).sort()[0]).slice(0,5)} al ${fFecha(pg[f].map(j=>j.fecha).sort().pop()).slice(0,5)}`}</div></td><td class="n">${eur(pg[f].reduce((a,j)=>a+Number(j.importe),0))}</td></tr>`).join('')}</table>`:''; }
-function filaJ(j,conNom){ return `<tr class="click" data-ed="jornales:${j.id}"><td>${fFecha(j.fecha)}${conNom?' · '+esc(trabNom(j.trabajador_id)):''}<div class="mut">${esc(j.tarea||'')} · ${esc(fincaNom(j.finca_id))}</div></td><td class="n" style="width:52px">${num(j.horas,1)} h</td><td class="n" style="width:80px">${eur(j.importe)}${j.pagado?'<div class="pos" style="font-size:12px">pagado</div>':''}</td></tr>`; }
+function filaJ(j,conNom){ return `<tr class="click" data-ed="jornales:${j.id}"><td>${fFecha(j.fecha)}${conNom?' · '+esc(trabNom(j.trabajador_id)):''}<div class="mut">${esc(j.tarea||'')} · ${esc(fincaNom(j.finca_id))}</div></td><td class="n" style="width:52px">${num(j.horas,1)} h</td><td class="n" style="width:80px">${j.sin_cobro?'<span class="mut">no cobra</span>':eur(j.importe)}${j.pagado&&!j.sin_cobro?'<div class="pos" style="font-size:12px">pagado</div>':''}</td></tr>`; }
 // Ficha de un producto del almacén: cuándo y dónde se echó, cuánto se compró y a qué precio
 function vFichaAlm(a){
   const es=x=>buscaAlm(x)?.id===a.id;
@@ -2125,6 +2134,7 @@ function vFichaTrab(t){
   const porF={}; C.jc.forEach(j=>{ const f=j.tarea||'Sin faena'; porF[f]=porF[f]||{d:0,i:0}; porF[f].d++; porF[f].i+=Number(j.importe); });
   fab(()=>abrirAdelanto(clave,t.id));
   return cabFicha('trabajadores',t.id)+`<div class="card"><h2>${esc(t.nombre)}${t.activo===false?' <span class="tag">baja</span>':''}</h2>
+    ${t.no_cobra?'<p class="tag" style="display:inline-block">No cobra (familia o acuerdo): sus días se apuntan sin dinero</p>':''}
     <p class="mut">${e?`De <a href="#" onclick="event.preventDefault();verFicha('empresas','${e.id}')">${esc(e.nombre)}</a> (${e.cuadrilla?'cuadrilla: cobra a los precios de la cuadrilla':'cobra la empresa, a sus precios'})`:`Cobra ${txtTarifa(tarifaDe(t,''))}`}${telA(t.telefono)}${t.carne?` · carné ${estadoCarne(t.carne_caduca)}`:''}</p>
     <div class="row" style="gap:6px;flex-wrap:wrap"><button class="btn sm" onclick="abrirAdelanto('${clave}','${t.id}')">💶 Apuntar pago</button>${C.queda>0?`<button class="btn sec sm" onclick="compartir(textoPersona('${t.id}'))">Enviar cuenta</button>`:''}</div></div>
   <div class="kpis"><div class="kpi"><span>Días ${esc(CAMP)}</span><b>${C.dias}</b></div><div class="kpi"><span>Ganado</span><b>${eur(C.gan)}</b></div><div class="kpi"><span>Pagado</span><b>${eur(C.pag)}</b></div><div class="kpi"><span>Le debo</span><b class="${C.queda>0?'neg':'pos'}">${C.queda>=0?eur(C.queda):'+'+eur(-C.queda)+' a cuenta'}</b></div></div>
@@ -2139,7 +2149,7 @@ function vFichaTrab(t){
 }
 function textoPersona(tid){ const C=cuentaPersona(tid); return `${trabNom(tid)}: ${C.sin.length} ${C.sin.length===1?'jornada':'jornadas'} sin cobrar = ${eur(C.deb)}\n`+C.sin.slice().reverse().map(j=>`· ${fFecha(j.fecha)} ${num(j.horas,1)} h ${j.tarea||''} ${eur(j.importe)}`).join('\n')+(C.aC?`\nPagado a cuenta: −${eur(C.aC)}\nQueda: ${eur(C.queda)}`:''); }
 function vFichaEmp(e){
-  const clave='e:'+e.id, js=D.jornales.filter(j=>j.empresa_id===e.id), sin=js.filter(j=>!j.pagado), ad=adelPend(clave), deb=pendientes()[clave]||0;
+  const clave='e:'+e.id, js=D.jornales.filter(j=>j.empresa_id===e.id), sin=js.filter(j=>!j.pagado&&!j.sin_cobro), ad=adelPend(clave), deb=pendientes()[clave]||0;
   const [ini,fin]=campRango(CAMP), jc=js.filter(j=>j.fecha>=ini&&j.fecha<=fin), sv=D.servicios.filter(x=>claveServ(x)==='e:'+e.id), svc=sv.filter(x=>x.fecha>=ini&&x.fecha<=fin), svP=sv.filter(x=>!x.pagado);
   const gan=jc.reduce((s,j)=>s+Number(j.importe),0)+svc.reduce((s,x)=>s+Number(x.importe),0);
   const ids=[...new Set([...sin.map(j=>j.trabajador_id),...ad.map(a=>a.trabajador_id)])];
@@ -2222,7 +2232,7 @@ async function compartir(texto){
   try{ await navigator.clipboard.writeText(texto); toast('Copiado: pégalo en WhatsApp'); }catch(e){ prompt('Copia el texto:',texto); }
 }
 function textoDeuda(clave){
-  const [tipo,id]=clave.split(':'); const js=D.jornales.filter(j=>!j.pagado&&claveDeuda(j)===clave).sort((a,b)=>a.fecha.localeCompare(b.fecha)||porNombre(a,b));
+  const [tipo,id]=clave.split(':'); const js=D.jornales.filter(j=>!j.pagado&&!j.sin_cobro&&claveDeuda(j)===clave).sort((a,b)=>a.fecha.localeCompare(b.fecha)||porNombre(a,b));
   const sv=D.servicios.filter(x=>!x.pagado&&claveServ(x)===clave);
   const nom=tipo==='e'?empNom(id):trabNom(id); const tot=js.reduce((a,j)=>a+Number(j.importe),0)+sv.reduce((a,x)=>a+Number(x.importe),0);
   const ad=adelPend(clave).sort((a,b)=>a.fecha.localeCompare(b.fecha)||porNombre(a,b)), tAd=ad.reduce((a,x)=>a+aCuenta(x),0);
@@ -3125,7 +3135,7 @@ async function restaurar(file){
 // ===== Jornadas por trabajador (Seguridad Social) =====
 function abrirJornadasSS(mes){
   const h=hoy(); mes=mes||h.slice(0,7); const ms=[0,1,2,3].map(i=>{ const d=new Date(+h.slice(0,4),+h.slice(5,7)-1-i,1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; });
-  const js=D.jornales.filter(j=>(!j.empresa_id||empresa(j.empresa_id)?.cuadrilla)&&j.fecha.startsWith(mes)&&j.tarea!=='Día perdido');
+  const js=D.jornales.filter(j=>(!j.empresa_id||empresa(j.empresa_id)?.cuadrilla)&&!j.sin_cobro&&!D.trabajadores.find(t=>t.id===j.trabajador_id)?.no_cobra&&j.fecha.startsWith(mes)&&j.tarea!=='Día perdido');
   const por={}; js.forEach(j=>{ const x=por[j.trabajador_id]=por[j.trabajador_id]||{dias:new Set(),h:0}; x.dias.add(j.fecha); x.h+=Number(j.horas)||0; });
   const filas=Object.entries(por).map(([id,x])=>({nom:trabNom(id),t:D.trabajadores.find(t=>t.id===id)||{},dias:[...x.dias].sort(),h:x.h})).sort((a,b)=>a.nom.localeCompare(b.nom,'es',{numeric:true,sensitivity:'base'}));
   const nJ=filas.reduce((s,f)=>s+f.dias.length,0), nomMes=`${MESES[+mes.slice(5)]} ${mes.slice(0,4)}`, concepto=`Seguridad Social ${nomMes}`;
@@ -3136,7 +3146,7 @@ function abrirJornadasSS(mes){
     <label>Lo que pagas por jornada y persona (€)<input id="ssPj" inputmode="decimal" value="${pj?String(pj).replace('.',','):''}" placeholder="p. ej. 12"></label>
     ${filas.length?`<table><tr><th>Trabajador</th><th class="n">Días</th><th>Qué días</th>${pj?'<th class="n">€</th>':''}</tr>${filas.map(f=>`<tr><td>${esc(f.nom)}${f.t.nif?`<div class="mut">${esc(f.t.nif)}</div>`:''}</td><td class="n">${f.dias.length}<div class="mut">${num(f.h,1)} h</div></td><td>${f.dias.map(d=>+d.slice(8)).join(', ')}</td>${pj?`<td class="n">${eur(f.dias.length*pj)}</td>`:''}</tr>`).join('')}</table>
       <p class="aviso" style="margin:8px 0">${nJ} jornadas${pj?` × ${eur(pj)} = <b>${eur(nJ*pj)}</b>`:''}${ya.length?`<br><span class="mut">Ya apuntado como gasto: ${eur(ya.reduce((s,g)=>s+Number(g.importe),0))}</span>`:''}</p>`:'<p class="mut">Nadie tuyo trabajó ese mes.</p>'}
-    <p class="mut">Tus trabajadores y los de tus cuadrillas (no los de empresas de servicios). Para pasarle al gestor las jornadas reales del mes.${filas.length&&pj?' Con «Apuntar el gasto» se guarda como gasto de «Seguros sociales», repartido entre las fincas según los días trabajados en cada una.':''}</p>
+    <p class="mut">Tus trabajadores y los de tus cuadrillas (no los de empresas de servicios ni los días que no cobran). Para pasarle al gestor las jornadas reales del mes.${filas.length&&pj?' Con «Apuntar el gasto» se guarda como gasto de «Seguros sociales», repartido entre las fincas según los días trabajados en cada una.':''}</p>
     <div class="row acciones" style="justify-content:flex-end;flex-wrap:wrap">${filas.length?`<button type="button" class="btn sec" id="ssC">Enviar</button>`:''}${filas.length&&pj?`<button type="button" class="btn sec" id="ssG">${ya.length?'Volver a apuntar':'Apuntar el gasto'}</button>`:''}<button type="button" class="btn" onclick="$('#dlg').close()">Cerrar</button></div>`;
   $('#ssPj').onchange=async()=>{ const v=pn($('#ssPj').value); AJ.ss_jornada=v>0?v:null; await guardarAjustes(true); abrirJornadasSS(mes); };
   if($('#ssC')) $('#ssC').onclick=()=>compartir(`Jornadas ${nomMes}\n`+filas.map(f=>`${f.nom}${f.t.nif?' ('+f.t.nif+')':''}: ${f.dias.length} días (${f.dias.map(d=>+d.slice(8)).join(', ')})`).join('\n'));
