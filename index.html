@@ -173,7 +173,7 @@ details.adv{margin:4px 0 10px}details.adv summary{cursor:pointer;color:var(--olv
 
 <script>
 // ===== Configuración =====
-const VERSION = '3.31';
+const VERSION = '3.33';
 const VERSION_FECHA = '15 oct 2026';
 const CREDITOS = `Olivas v${VERSION} (${VERSION_FECHA}) · © 2026 Alfonso Carrascosa Martínez · Hecha con Claude (Anthropic)`;
 const SUPA_URL = 'https://kseyndjbmkaflpoqitsj.supabase.co';
@@ -290,7 +290,8 @@ const TACTIL=matchMedia('(pointer:coarse)').matches||('ontouchstart' in window);
 function nuevoId(){ if(crypto.randomUUID) return crypto.randomUUID(); return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>{const r=Math.random()*16|0;return (c==='x'?r:(r&3|8)).toString(16);}); }
 async function insertar(tabla, filas){
   filas=[].concat(filas).map(f=>({id:nuevoId(),...f}));
-  const {error}=await sb.from('olv_'+tabla).insert(filas);
+  // si unas filas traen un campo y otras no, a las que no lo traen se les pone su valor por defecto (no un vacío)
+  const {error}=await sb.from('olv_'+tabla).insert(filas,{defaultToNull:false});
   if(!error) return {ok:true,filas};
   if(esRed(error)){ COLA.push({tabla,filas}); guardarCola(); D[tabla]=[...filas,...D[tabla]]; DV++; return {ok:true,offline:true,filas}; }
   return {ok:false,error};
@@ -1264,7 +1265,7 @@ function editarGrupoJ(fecha,clave){ clave=decodeURIComponent(clave); const [tare
     const tid0=g.find(j=>j.tarea_id)?.tarea_id||null;
     const filasN=nuevos.map(n=>{ const t=D.trabajadores.find(x=>x.id===n.tid); return {id:nuevoId(), fecha:nfe, trabajador_id:n.tid, empresa_id:t?.empresa_id&&empresa(t.empresa_id)?t.empresa_id:null, finca_id:nf, horas:n.h, tarea:nt, importe:n.imp, ...(n.nc?{sin_cobro:true}:{}), notas:nota||null, ...(tid0?{tarea_id:tid0}:{}), ...(pag==='si'?{pagado:true,pagado_fecha:hoy()}:{})}; });
     const res=await Promise.all([...Object.entries(lotes).map(([k,ids])=>sb.from('olv_jornales').update(JSON.parse(k)).in('id',ids)),
-      ...(quitar.size?[sb.from('olv_jornales').delete().in('id',[...quitar])]:[]), ...(filasN.length?[sb.from('olv_jornales').insert(filasN)]:[])]);
+      ...(quitar.size?[sb.from('olv_jornales').delete().in('id',[...quitar])]:[]), ...(filasN.length?[sb.from('olv_jornales').insert(filasN,{defaultToNull:false})]:[])]);
     const mal=res.find(r=>r.error);
     $('#dlg').close(); await cargar('jornales',mal?null:[...g.map(j=>j.id),...filasN.map(f=>f.id)]); pintarCampanas(); render();
     toast(mal?`Fallaron algunos cambios: ${mal.error.message}`:[cambios.length?`${cambios.length} cambiadas`:'',quitar.size?`${quitar.size} quitadas`:'',filasN.length?`${filasN.length} añadidas`:''].filter(Boolean).join(' · ')); };
@@ -3305,7 +3306,9 @@ function proximaCita(){
   const h=hoy(), y=+h.slice(0,4), l=[];
   D.reuniones.filter(r=>!r.hecha&&r.fecha>=h).forEach(r=>l.push({f:r.fecha+(r.hora||''),fecha:r.fecha,t:r.titulo,s:`${r.hora||''}${r.lugar?' · '+r.lugar:''}`,fn:"SUB.campo='reun';ir('campo')"}));
   plazos().forEach(p=>{ const {ini,fin}=plazoAnio(p,y); if(plazoHecho(p,y)||fin<h) return; const f=ini>h?ini:fin; l.push({f,fecha:f,t:p.nombre,s:ini>h?'se abre':'último día',fn:"SUB.cuentas='papeles';ir('cuentas')"}); });
-  D.tareas.filter(t=>!t.hecha&&t.fecha>=h).forEach(t=>l.push({f:t.fecha,fecha:t.fecha,t:t.titulo,s:'tarea'+(t.finca_id?' · '+fincaNom(t.finca_id):''),fn:`abrir('tareas',D.tareas.find(x=>x.id==='${t.id}'))`}));
+  // tareas en curso (de varios días) primero, luego las que vienen
+  D.tareas.filter(t=>!t.hecha&&(t.fecha>=h||(finTarea(t)&&t.fecha<=h&&finTarea(t)>=h))).forEach(t=>{ const enC=t.fecha<h; const todos=enC?diasRango(t.fecha,finTarea(t)):[], dh=enC?diasHechos(t).length:0;
+    l.push({f:enC?h+'0':t.fecha,fecha:enC?h:t.fecha,curso:enC,t:t.titulo,s:enC?`en curso · ${dh} de ${todos.length} días hechos${t.finca_id?' · '+fincaNom(t.finca_id):''}`:'tarea'+(t.finca_id?' · '+fincaNom(t.finca_id):''),fn:`abrir('tareas',D.tareas.find(x=>x.id==='${t.id}'))`}); });
   return l.sort((a,b)=>a.f.localeCompare(b.f))[0];
 }
 function cuando(fecha){ const d=difDias(hoy(),fecha); return d===0?'Hoy':d===1?'Mañana':d<7?['dom','lun','mar','mié','jue','vie','sáb'][new Date(fecha+'T12:00').getDay()]+' '+(+fecha.slice(8)):fFecha(fecha); }
@@ -3340,7 +3343,7 @@ function consejoAbono(w){
     <div class="row"><button class="btn sm" onclick="event.stopPropagation();abrir('tareas',null,{titulo:'Echar abono al suelo',tipo:'Abonado',fecha:'${cuando}'})">Ponerlo en tareas</button><button class="btn sec sm" onclick="event.stopPropagation();AJ.abono_no='${h.slice(0,4)}';guardarAjustes(true);$('#wAbono').innerHTML=''">Este año ya no</button></div></div>`}; }
 async function pintarWidgets(){
   const put=(k,html,fn)=>{ const el=$('#'+k); if(!el) return; el.innerHTML=`<div class="wt"><span>${WIDGETS.find(x=>x[0]===k)[1]}</span>${html.tag||''}</div><div class="wv">${html.v}</div><div class="ws">${html.s||''}</div>`; if(fn) el.setAttribute('onclick',fn); };
-  if($('#w_cita')){ const c=proximaCita(); put('w_cita', c?{v:`<span style="font-size:16px">${esc(c.t.length>38?c.t.slice(0,36)+'…':c.t)}</span>`,s:`${cuando(c.fecha)}${c.s?' · '+esc(c.s):''}`,tag:''}:{v:'<span style="font-size:15px" class="mut">Nada a la vista</span>',s:'Reuniones, plazos y tareas'}, c?.fn); }
+  if($('#w_cita')){ const c=proximaCita(); put('w_cita', c?{v:`<span style="font-size:16px">${esc(c.t.length>38?c.t.slice(0,36)+'…':c.t)}</span>`,s:c.curso?esc(c.s):`${cuando(c.fecha)}${c.s?' · '+esc(c.s):''}`,tag:''}:{v:'<span style="font-size:15px" class="mut">Nada a la vista</span>',s:'Reuniones, plazos y tareas'}, c?.fn); }
   if($('#w_aceite')) cargarAceite().then(A=>{ if(!A.ult.extra){ put('w_aceite',{v:'<span class="mut" style="font-size:14px">Sin datos</span>'}); return; }
       const fl=(t)=>{ const v=A.var7[t]; return v==null?'':`<span class="${v<0?'neg':'pos'}" style="font-size:12px;font-weight:600">${v<0?'▼':'▲'} ${num(Math.abs(v),1)} %</span>`; };
       put('w_aceite',{tag:`<span>${fFecha(A.ult.extra.fecha)}</span>`,v:`${num(A.ult.extra.eur_kg,2)} €/kg <span class="mut" style="font-size:12px;font-weight:400">virgen extra</span> ${fl('extra')}`,
