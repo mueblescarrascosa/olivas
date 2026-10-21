@@ -183,7 +183,7 @@ details.adv{margin:4px 0 10px}details.adv summary{cursor:pointer;color:var(--olv
 
 <script>
 // ===== Configuración =====
-const VERSION = '3.37';
+const VERSION = '3.38';
 const VERSION_FECHA = '21 oct 2026';
 const CREDITOS = `Olivas v${VERSION} (${VERSION_FECHA}) · © 2026 Alfonso Carrascosa Martínez · Hecha con Claude (Anthropic)`;
 const SUPA_URL = 'https://kseyndjbmkaflpoqitsj.supabase.co';
@@ -244,10 +244,10 @@ const sepDe=h=>`${+h.slice(5,7)>=9?+h.slice(0,4):+h.slice(0,4)-1}-09-01`;
 function campRango(c){ const a=parseInt(c); return [`${a}-10-01`,`${a+1}-09-30`]; }
 function fincaNom(id){ if(!id) return 'Común'; const f=D.fincas.find(x=>x.id===id); return f?f.nombre:'(borrada)'; }
 function maqNom(id){ const m=D.maquinas.find(x=>x.id===id); return m?m.nombre:''; }
-function toast(t, deshacer){
-  const e=$('#toast'); e.textContent=t; e.classList.remove('hidden'); clearTimeout(toast._t);
-  if(deshacer){ const b=document.createElement('button'); b.textContent='Deshacer'; b.className='tdes'; b.onclick=async()=>{ e.classList.add('hidden'); await deshacer(); }; e.append(' ',b); }
-  toast._t=setTimeout(()=>e.classList.add('hidden'), deshacer?6000:2500);
+function toast(t, deshacer, etq){
+  const e=$('#toast'); e.textContent=t; e.classList.remove('hidden'); clearTimeout(toast._t); toast._reabrir=false;
+  if(deshacer){ const b=document.createElement('button'); b.textContent=etq||'Deshacer'; b.className='tdes'; b.onclick=async()=>{ e.classList.add('hidden'); await deshacer(); }; e.append(' ',b); }
+  toast._t=setTimeout(()=>e.classList.add('hidden'), deshacer?(etq?9000:6000):2500);
 }
 
 // ===== Autenticación =====
@@ -302,10 +302,10 @@ function pintarCola(){ const n=COLA.reduce((a,i)=>a+i.filas.length,0); const b=$
 // En el móvil el teclado solo sale cuando tocas tú una casilla: al abrir una ventana no se enfoca ningún campo de texto
 const TACTIL=matchMedia('(pointer:coarse)').matches||('ontouchstart' in window);
 (()=>{ const sm=HTMLDialogElement.prototype.showModal; HTMLDialogElement.prototype.showModal=function(){ const r=sm.apply(this,arguments);
-  if(this.id==='dlg'){ DLG_SUCIO=false; ponerGuardia(); }
+  if(this.id==='dlg'){ DLG_SUCIO=false; DLG_ACCION=0; ponerGuardia(); if(toast._reabrir){ toast._reabrir=false; $('#toast')?.classList.add('hidden'); } }
   if(TACTIL){ const a=document.activeElement; if(a&&this.contains(a)&&/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) a.blur(); } return r; }; })();
 // Botón «atrás» del móvil: cierra la ventana abierta (preguntando si hay algo escrito), vuelve de una ficha o a Inicio; en Inicio, dos veces para salir
-var DLG_SUCIO=false, GUARDIA=false;
+var DLG_SUCIO=false, GUARDIA=false, DLG_ACCION=0;
 function ponerGuardia(){ if(!GUARDIA){ try{ history.pushState({olv:1},''); GUARDIA=true; }catch(e){} } }
 const salirSinGuardar=()=>!DLG_SUCIO||confirm('¿Salir sin guardar lo que has puesto?');
 window.addEventListener('popstate',()=>{ GUARDIA=false; const dlg=$('#dlg');
@@ -317,7 +317,10 @@ document.addEventListener('DOMContentLoaded',()=>{ const dlg=$('#dlg'); if(!dlg)
   dlg.addEventListener('cancel',e=>{ if(!salirSinGuardar()) e.preventDefault(); });
   dlg.addEventListener('input',e=>{ if(e.isTrusted) DLG_SUCIO=true; }, true);
   dlg.addEventListener('click',e=>{ if(e.isTrusted&&e.target.closest('.chip,input[type=checkbox]')) DLG_SUCIO=true; }, true);
-  dlg.addEventListener('close',()=>{ DLG_SUCIO=false; }); });
+  dlg.addEventListener('click',e=>{ if(e.target.closest('button,[type=submit]')&&!e.target.closest('.chip')) DLG_ACCION=Date.now(); }, true);
+  dlg.addEventListener('submit',()=>{ DLG_ACCION=Date.now(); }, true);
+  dlg.addEventListener('close',()=>{ const perdido=DLG_SUCIO&&!(DLG_ACCION&&Date.now()-DLG_ACCION<60e3); DLG_SUCIO=false;
+    if(perdido){ toast('Se ha cerrado sin guardar',()=>{ $('#dlg').showModal(); DLG_SUCIO=true; },'Volver a abrirla'); toast._reabrir=true; } }); });
 function nuevoId(){ if(crypto.randomUUID) return crypto.randomUUID(); return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>{const r=Math.random()*16|0;return (c==='x'?r:(r&3|8)).toString(16);}); }
 async function insertar(tabla, filas){
   filas=[].concat(filas).map(f=>({id:nuevoId(),...f}));
@@ -5073,8 +5076,10 @@ function ics(){
 
 $('#lgCred').innerHTML = `Olivas v${VERSION}<br>© 2026 Alfonso Carrascosa Martínez · Hecha con Claude (Anthropic)`;
 $('#navCred').innerHTML = `Olivas v${VERSION} · ${VERSION_FECHA}<br>© 2026 Alfonso Carrascosa Martínez<br>Hecha con Claude (Anthropic)`;
-// Tocar fuera del formulario lo cierra (salvo mientras guarda)
-$('#dlg').addEventListener('click', e=>{ if(e.target===$('#dlg') && !$('#fOk')?.disabled) $('#dlg').close(); });
+// Tocar fuera del formulario (en lo oscuro) lo cierra, salvo mientras guarda; si hay algo escrito, pregunta antes
+let DLG_DOWN=false; const fueraDlg=e=>{ const r=$('#dlg').getBoundingClientRect(); return e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom; };
+$('#dlg').addEventListener('pointerdown', e=>{ DLG_DOWN=e.target===$('#dlg')&&fueraDlg(e); });
+$('#dlg').addEventListener('click', e=>{ const fuera=DLG_DOWN&&e.target===$('#dlg')&&fueraDlg(e); DLG_DOWN=false; if(fuera && !$('#fOk')?.disabled && salirSinGuardar()) $('#dlg').close(); });
 arranque();
 </script>
 </body>
