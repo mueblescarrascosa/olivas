@@ -183,7 +183,7 @@ details.adv{margin:4px 0 10px}details.adv summary{cursor:pointer;color:var(--olv
 
 <script>
 // ===== Configuración =====
-const VERSION = '3.36';
+const VERSION = '3.37';
 const VERSION_FECHA = '21 oct 2026';
 const CREDITOS = `Olivas v${VERSION} (${VERSION_FECHA}) · © 2026 Alfonso Carrascosa Martínez · Hecha con Claude (Anthropic)`;
 const SUPA_URL = 'https://kseyndjbmkaflpoqitsj.supabase.co';
@@ -213,7 +213,7 @@ const UMB_DEF = {
 };
 
 // ===== Estado =====
-let D = {fincas:[],maquinas:[],gastos:[],ingresos:[],tratamientos:[],tareas:[],trabajadores:[],jornales:[],empresas:[],servicios:[],facturas:[],factura_lineas:[],dias_perdidos:[],comunidades:[],riego_pagos:[],labores:[],consejos:[],aplicaciones:[],pesadas:[],notas:[],recintos:[],reuniones:[],almacen:[],viajes:[],muestras:[],mantenimientos:[],adelantos:[]};
+let D = {fincas:[],maquinas:[],gastos:[],ingresos:[],tratamientos:[],tareas:[],trabajadores:[],jornales:[],empresas:[],servicios:[],facturas:[],factura_lineas:[],dias_perdidos:[],comunidades:[],riego_pagos:[],labores:[],consejos:[],aplicaciones:[],pesadas:[],notas:[],recintos:[],reuniones:[],almacen:[],viajes:[],muestras:[],mantenimientos:[],adelantos:[],riegos:[]};
 // Recogida de ACEITUNA (no de lechuga u otra cosa): la faena «Recogida» tal cual o que hable de aceituna, vareo, vibrar o suelo
 const esRecAce=t=>{ t=(t||'').toLowerCase().trim(); if(/revis|repar|arregl|manten|engras|afila|cambi.*(aceite|filtro)/.test(t)) return false; return t==='recogida'||/aceitun|oliva|vare|vibr|suelo|vuelo/.test(t)||(/recog/.test(t)&&!/[a-zñ]{3,}/.test(t.replace(/recog\w*|de|la|el|los|las|\s/g,''))); };
 const JOR_TAREAS = ['Recogida','Poda','Pestugar','Juntar ramas','Desbrozar','Soplar','Curar','Abonar','Día perdido','Otra'];
@@ -358,8 +358,8 @@ function cambiarEnCola(k,id,u){ const it=enCola(k,id); if(!it) return false; Obj
 function sinRed(error){ if(esRed(error)){ toast('Sin cobertura: para editar o borrar necesitas conexión'); return true; } return false; }
 
 async function cargar(k, ids){
-  const ord = {adelantos:'fecha',fincas:'nombre',maquinas:'nombre',gastos:'fecha',ingresos:'fecha',tratamientos:'fecha',tareas:'fecha',trabajadores:'nombre',jornales:'fecha',empresas:'nombre',servicios:'fecha',facturas:'fecha',factura_lineas:'created_at',dias_perdidos:'fecha',comunidades:'nombre',riego_pagos:'fecha',labores:'fecha',consejos:'created_at',aplicaciones:'fecha',pesadas:'fecha',notas:'fecha',recintos:'parcela',reuniones:'fecha',almacen:'nombre',viajes:'fecha',muestras:'fecha',mantenimientos:'fecha'}[k];
-  const asc = !['adelantos','mantenimientos','viajes','gastos','ingresos','tratamientos','jornales','servicios','facturas','dias_perdidos','riego_pagos','labores','consejos','aplicaciones','pesadas','notas'].includes(k);
+  const ord = {adelantos:'fecha',fincas:'nombre',maquinas:'nombre',gastos:'fecha',ingresos:'fecha',tratamientos:'fecha',tareas:'fecha',trabajadores:'nombre',jornales:'fecha',empresas:'nombre',servicios:'fecha',facturas:'fecha',factura_lineas:'created_at',dias_perdidos:'fecha',comunidades:'nombre',riego_pagos:'fecha',labores:'fecha',consejos:'created_at',aplicaciones:'fecha',pesadas:'fecha',notas:'fecha',recintos:'parcela',reuniones:'fecha',almacen:'nombre',viajes:'fecha',muestras:'fecha',riegos:'fecha',mantenimientos:'fecha'}[k];
+  const asc = !['adelantos','mantenimientos','viajes','riegos','gastos','ingresos','tratamientos','jornales','servicios','facturas','dias_perdidos','riego_pagos','labores','consejos','aplicaciones','pesadas','notas'].includes(k);
   // Solo unas filas (lo que se acaba de guardar o borrar): se piden esas y se colocan en su sitio, sin bajar la tabla entera
   if(Array.isArray(ids)){ ids=[...new Set(ids.filter(Boolean))]; if(!ids.length) return;
     if(ids.length<=150){ const {data,error}=await sb.from('olv_'+k).select('*').in('id',ids);
@@ -381,7 +381,7 @@ function ordenFilas(ord,asc){ return (a,b)=>{ const x=a[ord]??'', y=b[ord]??''; 
 // Copia en el móvil de todo lo cargado: con ella la app se abre al instante la próxima vez
 function guardarCache(){ guardarAgenda().catch(()=>{}); try{ const pendIds=new Set(COLA.flatMap(i=>i.filas.map(f=>f.id))), desde=campRango(`${parseInt(campDe(hoy()))-2}/00`)[0], sinPend={};
     Object.keys(D).forEach(k=>{ let L=D[k].filter(r=>!pendIds.has(r.id));
-      if(['jornales','servicios','gastos','pesadas','viajes','tratamientos','labores','aplicaciones','notas','muestras'].includes(k)) L=L.filter(r=>!r.fecha||r.fecha>=desde||r.pagado===false); // lo viejo se baja al conectar
+      if(['jornales','servicios','gastos','pesadas','viajes','tratamientos','labores','aplicaciones','notas','muestras','riegos'].includes(k)) L=L.filter(r=>!r.fecha||r.fecha>=desde||r.pagado===false); // lo viejo se baja al conectar
       if(k==='consejos') L=L.slice(0,5); if(k==='dias_perdidos') L=L.map(({meteo,...r})=>r);
       sinPend[k]=L; });
     localStorage.setItem('olv_cache',JSON.stringify({D:sinPend,AJ,t:Date.now(),uid:USUARIO})); }catch(e){ try{ localStorage.removeItem('olv_cache'); }catch(_){} } }
@@ -436,6 +436,7 @@ const S = {
     {k:'comunidad_id',l:'Comunidad de regantes',t:'chips',ops:[['','—'],...D.comunidades.filter(c=>c.activa).map(c=>[c.id,c.nombre])]},
     {k:'olivos_riego',l:'Olivos con riego',t:'int',help:'Vacío = todos los olivos de la finca'},
     {k:'goteros_olivo',l:'Goteros por olivo',t:'num',grp:'rieg'},{k:'gotero_lh',l:'Litros por hora de cada gotero',t:'num',grp:'rieg'},
+    {k:'horas_turno',l:'Horas de tu turno',t:'num',grp:'rieg',help:'Solo si la comunidad da horas fijas y en esta finca son otras'},
     {k:'cobertura_pct',l:'Suelo que cubre la copa (%)',t:'num',grp:'rieg',help:'Con marco 10×10: copa de 6 m ≈ 28 %, de 7 m ≈ 38 %, de 8 m ≈ 50 %. Vacío = 35 %'},
     {k:'arrendada',l:'La llevo arrendada (pago renta)',t:'bool'},
     {k:'propietario',l:'Dueño / a quién pago',grp:'arr'},
@@ -551,8 +552,23 @@ const S = {
     {k:'pagado',l:'Pagado',t:'bool'},{k:'notas',l:'Notas',t:'area',adv:1}]},
   comunidades:{tit:'Comunidad de regantes', f:()=>[
     {k:'nombre',l:'Nombre',req:1,focus:1},{k:'cuota_olivo',l:'Cuota por olivo y año (€)',t:'num',req:1},
+    {k:'_rg',t:'html',html:'<b style="display:block;margin:10px 0 2px">Cómo da el agua</b>'},
+    {k:'riego_meses',l:'Meses en que hay agua',t:'multi',ops:MESES.slice(1).map((m,i)=>[i+1,m[0].toUpperCase()+m.slice(1)])},
+    {k:'riego_modo',l:'Días de riego',t:'chips',ops:[['dias','Días fijos'],['cada','Cada X días'],['demanda','Cuando quiero']]},
+    {k:'riego_dias',l:'Qué días',t:'multi',ops:[[1,'L'],[2,'M'],[3,'X'],[4,'J'],[5,'V'],[6,'S'],[7,'D']],grp:'rdias'},
+    {k:'riego_cada',l:'Cada cuántos días',t:'int',grp:'rcada'},{k:'riego_ref',l:'Un día que te tocó (o que te toca)',t:'date',grp:'rcada'},
+    {k:'horas_modo',l:'Horas de cada riego',t:'chips',ops:[['libre','Las que yo quiera'],['fijas','Fijas por turno']]},
+    {k:'horas_turno',l:'Horas de cada turno',t:'num',grp:'rfijas',help:'Si una finca tiene otras, se ponen en la finca'},
+    {k:'dotacion',l:'Tope de agua al año (m³)',t:'num',help:'Vacío si no hay tope'},
+    {k:'dotacion_u',l:'El tope es',t:'chips',ops:[['olivo','Por olivo'],['ha','Por hectárea'],['total','Para todas mis fincas']],def:'olivo',grp:'rdot'},
     {k:'cif',l:'CIF',adv:1},{k:'telefono',l:'Teléfono',adv:1},{k:'iban_cuota',l:'Cuenta donde se paga',adv:1},
     {k:'activa',l:'Activa',t:'bool',def:true,adv:1},{k:'notas',l:'Notas',t:'area',adv:1}]},
+  riegos:{tit:'Riego', f:()=>[
+    {k:'finca_id',l:'Finca',t:'chips',ops:D.fincas.filter(f=>f.activa&&f.riego).map(f=>[f.id,f.nombre]),req:1,def:()=>(D.fincas.find(f=>f.id===APUNTAR_FINCA&&f.riego)||D.fincas.find(f=>f.activa&&f.riego))?.id||''},
+    {k:'fecha',l:'Día',t:'date',req:1,def:()=>hoy(),q:[['Ayer',-1],['Anteayer',-2]]},
+    {k:'horas',l:'Horas de riego',t:'num',big:1,focus:1},
+    {k:'m3',l:'O los m³ del contador',t:'num',help:'Si no lo pones, se calcula con las horas y los goteros de la finca'},
+    {k:'notas',l:'Notas',adv:1}]},
   riego_pagos:{tit:'Recibo de riego', f:()=>[
     {k:'importe',l:'Importe (€)',t:'num',req:1,big:1,focus:1},
     {k:'comunidad_id',l:'Comunidad',t:'chips',ops:D.comunidades.map(c=>[c.id,c.nombre]),req:1,def:()=>D.comunidades[0]?.id||''},
@@ -618,6 +634,8 @@ function campoHtml(c, v, reg){
     case 'sel': if(c.ops.length<=8) return campoHtml({...c,t:'chips',ops:c.ops.filter(([val,t])=>t!=='')},v,reg);
       return `<label>${lab}<select name="${c.k}">${c.ops.map(([val,t])=>`<option value="${esc(val)}" ${String(v??'')===String(val)?'selected':''}>${esc(t)}</option>`).join('')}</select>${help}</label>`;
     case 'chips': return `${c.l?`<span class="clab">${lab}</span>`:''}<div class="chips" data-chips="${c.k}">${c.ops.map(([val,t])=>`<button type="button" class="chip ${String(v??'')===String(val)?'on':''}" data-val="${esc(val)}">${esc(t)}</button>`).join('')}</div><input type="hidden" name="${c.k}" value="${esc(v??'')}">`;
+    case 'multi': { const sel=(Array.isArray(v)?v:String(v??'').split(',')).map(String).filter(Boolean);
+      return `${c.l?`<span class="clab">${lab}</span>`:''}<div class="chips" data-multi="${c.k}">${c.ops.map(([val,t])=>`<button type="button" class="chip ${sel.includes(String(val))?'on':''}" data-val="${esc(val)}">${esc(t)}</button>`).join('')}</div><input type="hidden" name="${c.k}" value="${esc(sel.join(','))}">${help}`; }
     case 'date': return `<label>${lab}<input type="date" name="${c.k}" value="${esc(v)}" ${c.req?'required':''}>${help}</label>${c.q?`<div class="chips" style="margin-top:-6px">${c.q.map(([t,n])=>`<button type="button" class="chip" data-qf="${c.k}" data-n="${n}">${t}</button>`).join('')}</div>`:''}`;
     case 'time': return `<label>${lab}<input type="time" name="${c.k}" value="${esc(v)}">${help}</label>`;
     case 'num': case 'int': case 'coord': return `<label>${lab}<input name="${c.k}" inputmode="decimal" autocomplete="off" class="${c.big?'big':''}" value="${esc(v)}" ${c.req?'required':''}>${help}</label>`;
@@ -629,6 +647,8 @@ function activarChips(root){
     const inp=root.querySelector(`input[name="${g.dataset.chips}"]`);
     g.querySelectorAll('.chip').forEach(b=>b.onclick=()=>{ g.querySelectorAll('.chip').forEach(x=>x.classList.remove('on')); b.classList.add('on'); inp.value=b.dataset.val; inp.dispatchEvent(new Event('change',{bubbles:true})); });
   });
+  root.querySelectorAll('[data-multi]').forEach(g=>{ const inp=root.querySelector(`input[name="${g.dataset.multi}"]`);
+    g.querySelectorAll('.chip').forEach(b=>b.onclick=()=>{ b.classList.toggle('on'); inp.value=[...g.querySelectorAll('.chip.on')].map(x=>x.dataset.val).join(','); inp.dispatchEvent(new Event('change',{bubbles:true})); }); });
   root.querySelectorAll('[data-qf]').forEach(b=>b.onclick=()=>{ root.querySelector(`input[name="${b.dataset.qf}"]`).value=addDias(hoy(),+b.dataset.n); });
 }
 function abrir(k, reg=null, ini=null){
@@ -674,6 +694,10 @@ function abrir(k, reg=null, ini=null){
         if(!g||!pr||!e||pn(lit.value)){ box.classList.add('hidden'); return; } const l=Math.round(e/pr);
         box.innerHTML=`<button type="button" class="chip">≈ ${num(l)} l de ${COMB[tipo][0].toLowerCase()} a ${num(pr,3)} €/l (${esc(g.rotulo)})</button>`; box.classList.remove('hidden'); box.firstChild.onclick=()=>{ lit.value=l; box.classList.add('hidden'); }; };
       imp.addEventListener('input',sug); lit.addEventListener('input',sug); ci.addEventListener('change',sug); sug(); } }
+  if(k==='comunidades'){ const tg=()=>{ const m=$('#frm [name=riego_modo]').value, hm=$('#frm [name=horas_modo]').value, dt=pn($('#frm [name=dotacion]').value);
+      [['rdias',m==='dias'],['rcada',m==='cada'],['rfijas',hm==='fijas'],['rdot',dt>0]].forEach(([g,v])=>document.querySelectorAll(`#frm [data-grp=${g}]`).forEach(el=>el.classList.toggle('hidden',!v))); };
+    ['riego_modo','horas_modo'].forEach(n=>$(`#frm [name=${n}]`).addEventListener('change',tg)); $('#frm [name=dotacion]').addEventListener('input',tg); tg();
+    const du=$('#frm [name=dotacion_u]'); if(!du.value){ du.value='olivo'; $('#frm [data-chips=dotacion_u] .chip[data-val=olivo]')?.classList.add('on'); } }
   if(k==='reuniones'){ const ti=$('#frm [name=tipo]'); ti.addEventListener('change',()=>{ ULT.r_tipo=ti.value; }); }
   if(k==='dias_perdidos'){ VJ_DP=reg?null:activarViajeCampo('dpViaje',()=>$('#frm [name=finca_id]').value); if(reg) $('#dpViaje')?.closest('.lab')?.remove(); else $('#frm [name=finca_id]').addEventListener('change',()=>VJ_DP&&VJ_DP.pinta()); }
   if(k==='trabajadores'){
@@ -738,6 +762,7 @@ async function guardar(k, reg, otro=false){
   for(const c of S[k].f()){
     if(c.t==='html') continue;
     if(c.t==='bool'){ obj[c.k] = fd.get(c.k)==='on'; continue; }
+    if(c.t==='multi'){ const sv=String(fd.get(c.k)||''), a=sv?sv.split(',').map(Number).filter(n=>!isNaN(n)):[]; obj[c.k]=a.length?a:null; continue; }
     let v = fd.get(c.k);
     if(c.t==='num'||c.t==='int'||c.t==='coord'){ v=pn(v,c.t!=='coord'); if(Number.isNaN(v)){ toast(`«${c.l}» no es un número`); return; } if(c.t==='int'&&v!=null) v=Math.round(v); }
     else if(v==='') v=null;
@@ -755,6 +780,7 @@ async function guardar(k, reg, otro=false){
     if(reg&&reg.pagado&&!obj.pagado&&!confirm('¿Quitar «Pagado» a este día?'+avisoPagado([reg.id]))) return; }
   if(k==='servicios'){ if(obj.empresa_id) obj.trabajador_id=null; else if(!obj.trabajador_id){ toast('Di de qué empresa o de qué persona es'); return; } }
   if(k==='pesadas'&&!reg&&obj.finca_id&&!avisoPlazo(obj.finca_id,[obj.fecha])) return;
+  if(k==='riegos'&&!D.fincas.some(f=>f.id===obj.finca_id&&f.riego)){ toast('Elige una finca con riego'); return; }
   document.querySelectorAll('#fOk,#fOtro').forEach(b=>b.disabled=true);
   if(k==='notas'&&!reg) await subirFotoNota(obj);
   if(k==='dias_perdidos'){ obj.coste=obj.coste||0; if(obj.hora_seco!=null) obj.hora_seco=Number(obj.hora_seco); await fotoTiempo(obj); }
@@ -1053,7 +1079,7 @@ function avisos(){
     else if(d<=u.itv_dias) out.push({c:d<=7?'bad':'',t:`Riego: <b>${esc(r.concepto)} ${esc(comNom(r.comunidad_id))}</b> ${eur(r.importe)} vence el ${fFecha(r.vencimiento)}`,ord:d,riego:1}); });
   { const liq=D.ingresos.some(i=>i.campana===CAMP&&/Liquidaci/.test(i.tipo||'')); const pr=rentas().reduce((a,r)=>a+r.pend,0);
     if(liq&&pr>0) out.push({c:'',t:`Ya has cobrado liquidación: queda la renta de las fincas arrendadas, <b>${eur(pr)}</b>`,ord:49,fn:"SUB.cuentas='papeles';ir('cuentas')"}); }
-  out.push(...avisosExtra(h)); out.push(...avisosMuestras(h)); out.push(...avisosMant(h));
+  out.push(...avisosExtra(h)); out.push(...avisosMuestras(h)); out.push(...avisosMant(h)); out.push(...avisosRiego(h));
   const deb=Object.values(pendientes()).filter(v=>v>0).reduce((a,b)=>a+b,0);
   if(deb>0) out.push({c:'',t:`Debes <b>${eur(deb)}</b> a trabajadores${D.empresas.length?' y empresas':''}`,ord:50,go:'jornales'});
   return out.sort((a,b)=>a.ord-b.ord);
@@ -1685,12 +1711,12 @@ function vRiego(){
   const costeFinca=f=>{ let t=0; rec.forEach(r=>{ if(r.finca_id) { if(r.finca_id===f.id) t+=Number(r.importe); return; } const fs=fincasDe(r.comunidad_id); const tot=fs.reduce((a,x)=>a+olivosRiego(x),0); if(tot&&fs.includes(f)) t+=Number(r.importe)*olivosRiego(f)/tot; }); return t; };
   return `<div class="card"><h2>Comunidades de regantes<span class="sp"></span><button class="btn sec sm" onclick="abrir('comunidades')">+ Comunidad</button></h2>
     ${D.comunidades.length?`<table>${D.comunidades.map(c=>{ const fs=fincasDe(c.id); const ol=fs.reduce((a,f)=>a+olivosRiego(f),0); const yaCuota=rec.some(r=>r.comunidad_id===c.id&&r.concepto==='Cuota');
-      return `<tr><td class="click" data-ed="comunidades:${c.id}">${esc(c.nombre)}${c.activa?'':' <span class="tag">baja</span>'}<div class="mut">${eur(c.cuota_olivo)}/olivo · ${num(ol)} olivos en ${fs.length} ${fs.length===1?'finca':'fincas'}</div></td><td class="n">${eur(cuotaEstimada(c))}<div class="mut">al año</div></td><td class="n">${yaCuota?'<span class="pos" style="font-size:13px">cuota apuntada</span>':`<button class="btn sm" onclick="abrir('riego_pagos',null,{comunidad_id:'${c.id}',concepto:'Cuota',importe:${cuotaEstimada(c)}})">Apuntar cuota</button>`}</td></tr>`; }).join('')}</table>`:'<p class="mut">Da de alta la comunidad de regantes con lo que cobra por olivo, y luego marca en cada finca que tiene riego.</p>'}</div>
+      return `<tr><td class="click" data-ed="comunidades:${c.id}">${esc(c.nombre)}${c.activa?'':' <span class="tag">baja</span>'}<div class="mut">${eur(c.cuota_olivo)}/olivo · ${num(ol)} olivos en ${fs.length} ${fs.length===1?'finca':'fincas'}</div><div class="mut" style="font-size:12px">${resumenRiegoCom(c)}</div></td><td class="n">${eur(cuotaEstimada(c))}<div class="mut">al año</div></td><td class="n">${yaCuota?'<span class="pos" style="font-size:13px">cuota apuntada</span>':`<button class="btn sm" onclick="abrir('riego_pagos',null,{comunidad_id:'${c.id}',concepto:'Cuota',importe:${cuotaEstimada(c)}})">Apuntar cuota</button>`}</td></tr>`; }).join('')}</table>`:'<p class="mut">Da de alta la comunidad de regantes con lo que cobra por olivo, y luego marca en cada finca que tiene riego.</p>'}</div>
   <div class="card"><h2>Recibos ${esc(CAMP)}<span class="sp"></span><button class="btn sec sm" onclick="abrir('riego_pagos')">+ Recibo</button></h2>
     ${pend.length?`<p class="mut">Pendiente de pagar: <b class="neg">${eur(pend.reduce((a,r)=>a+Number(r.importe),0))}</b></p>`:''}
     ${rec.length?`<table>${rec.map(r=>{ const v=r.vencimiento&&!r.pagado?difDias(hoy(),r.vencimiento):null;
       return `<tr class="click" data-ed="riego_pagos:${r.id}"><td>${esc(r.concepto)} · ${esc(comNom(r.comunidad_id))}<div class="mut">${fFecha(r.fecha)}${r.finca_id?' · '+esc(fincaNom(r.finca_id)):''}${r.vencimiento?` · vence ${fFecha(r.vencimiento)}`:''}</div></td><td class="n">${eur(r.importe)}</td><td class="n">${r.pagado?'<span class="pos" style="font-size:13px">pagado</span>':`<button class="btn sm ${v!=null&&v<0?'del':''}" data-hecha-no onclick="event.stopPropagation();pagarRecibo('${r.id}')">Pagar</button>`}</td></tr>`; }).join('')}</table>`:'<p class="mut">Sin recibos en esta campaña.</p>'}</div>
-  <div class="card"><h2>Fincas con riego</h2>${fr.length?`<table><tr><th>Finca</th><th class="n">Olivos de riego</th><th class="n">Coste ${esc(CAMP)}</th></tr>${fr.map(f=>{ const c=costeFinca(f); const o=olivosRiego(f); return `<tr class="click" data-ed="fincas:${f.id}"><td>${esc(f.nombre)}<div class="mut">${f.comunidad_id?esc(comNom(f.comunidad_id)):'sin comunidad'}</div></td><td class="n">${num(o)}</td><td class="n">${eur(c)}<div class="mut">${o?eur(c/o)+'/olivo':''}</div></td></tr>`; }).join('')}</table>`:'<p class="mut">Ninguna finca tiene marcado el riego. Entra en la finca y marca «Tiene riego».</p>'}</div>`;
+  <div class="card"><h2>Fincas con riego</h2>${fr.length?`<table><tr><th>Finca</th><th class="n">Olivos de riego</th><th class="n">Coste ${esc(CAMP)}</th></tr>${fr.map(f=>{ const c=costeFinca(f); const o=olivosRiego(f); return `<tr class="click" data-ed="fincas:${f.id}"><td>${esc(f.nombre)}<div class="mut">${f.comunidad_id?esc(comNom(f.comunidad_id)):'sin comunidad'}</div>${(()=>{ const A=aguaAnio(f), tp=topeAgua(f,confRiego(f)); return A.n||tp?`<div class="mut" style="font-size:12px">${A.n} ${A.n===1?'riego':'riegos'} · ${num(A.m3)}${tp?` de ${num(tp)}`:''} m³ este año</div>`:''; })()}</td><td class="n">${num(o)}</td><td class="n">${eur(c)}<div class="mut">${o?eur(c/o)+'/olivo':''}</div></td></tr>`; }).join('')}</table>`:'<p class="mut">Ninguna finca tiene marcado el riego. Entra en la finca y marca «Tiene riego».</p>'}</div>`;
 }
 
 // ===== Labores: qué toca en cada finca =====
@@ -1888,6 +1914,7 @@ async function contextoTecnico(pregunta){
     },
     produccion_por_campana:Object.entries(prod).map(([c,x])=>({campana:c,kilos:Math.round(x.kilos),rendimiento_medio:x.kilos?Math.round(x.rend_x_kg/x.kilos*100)/100:null})),
     muestras_ult_6_meses:D.muestras.filter(m=>m.fecha>=hace(180)).map(m=>({fecha:m.fecha,finca:fincaNom(m.finca_id),tipo:m.tipo,valor:m.valor,datos:m.datos})),
+    riegos_ult_60_dias:D.riegos.filter(r=>r.fecha>=hace(60)).map(r=>({fecha:r.fecha,finca:fincaNom(r.finca_id),horas:r.horas,m3:r.m3})),
     fincas_con_algodoncillo:D.fincas.filter(f=>f.algodoncillo).map(f=>f.nombre),
     analisis_suelo_y_foliar:D.fincas.filter(f=>f.activa).map(f=>{ const x=t=>{ const m=ultMuestra(t,f.id); return m?{fecha:m.fecha, laboratorio:m.datos?.laboratorio||null, valores:(m.datos?.valores||[]).map(v=>({...v, nivel_app:nivelAna(t,v)?.n||null}))}:null; }; return {finca:f.nombre, foliar:x('foliar'), suelo:x('suelo')}; }).filter(a=>a.foliar||a.suelo),
     pendientes_calendario:pendientesLabores().filter(g=>g.toca).map(g=>({labor:g.L.nombre,fincas:g.fincas.map(f=>f?f.nombre:'todas'),dias_que_quedan:g.resta})),
@@ -2219,7 +2246,7 @@ const EN_COSECHA=()=>[10,11,12,1,2,3].includes(new Date().getMonth()+1);
 const APUNTAR=[
   ['Gasto','💶',"abrir('gastos')"],['Jornada','👷',"abrirParte()"],['Pesada','⚖️',"abrir('pesadas')"],['Curación','💧',"abrirAplicacion()"],
   ['Factura','📄',"escanear()"],['Nota de campo','📝',"abrir('notas')"],['Tarea','✅',"abrir('tareas')"],['Cobro','💰',"abrir('ingresos')"],['Escanear liqui&shy;dación','🧾',"escanearLiq()"],['Escanear tickets','🎫',"escanearTickets()"],['Índice de madurez','🫒',"abrirMadurez()"],['Análisis de rendi&shy;miento','🧪',"abrirRendimiento()"],['Aforo de cosecha','⚖️',"abrirAforo()"],
-  ['Reunión o cita','📅',"abrir('reuniones')"],['Mante&shy;nimiento de máquina','🔧',"abrirMant()"],['Día perdido','🌧️',"abrir('dias_perdidos')"],['Recibo de riego','🚿',"abrir('riego_pagos')",'mas:riego'],['Producto al almacén','📦',"abrir('almacen')",'campo:almacen'],
+  ['Reunión o cita','📅',"abrir('reuniones')"],['Mante&shy;nimiento de máquina','🔧',"abrirMant()"],['Día perdido','🌧️',"abrir('dias_perdidos')"],['Riego hecho','💦',"abrir('riegos')",'mas:riego'],['Recibo de riego','🚿',"abrir('riego_pagos')",'mas:riego'],['Producto al almacén','📦',"abrir('almacen')",'campo:almacen'],
 ];
 function abrirApuntar(fid){
   $('#frm').oninput=null; $('#frm').onchange=null; $('#frm').onsubmit=e=>e.preventDefault();
@@ -2234,7 +2261,7 @@ function abrirDictado(){
   const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
   $('#frm').oninput=null; $('#frm').onchange=null; $('#frm').onsubmit=e=>e.preventDefault();
   $('#frm').innerHTML=`<h3>🎤 Dímelo y lo apunto</h3>
-    <p class="mut" style="margin-top:0">Por ejemplo: «hoy Pepe y Juan, recogida en el Arroyo, jornada entera» · «gasoil del tractor, 80 euros, 60 litros» · «pesada de 2.300 kilos al 21 %» · «mañana curar el Cerro» · «en los Guarros hay repilo».</p>
+    <p class="mut" style="margin-top:0">Por ejemplo: «hoy Pepe y Juan, recogida en el Arroyo, jornada entera» · «gasoil del tractor, 80 euros, 60 litros» · «pesada de 2.300 kilos al 21 %» · «he regado el Arroyo 5 horas» · «mañana curar el Cerro» · «en los Guarros hay repilo».</p>
     <textarea id="dTxt" rows="3" placeholder="${SR?'Pulsa «Hablar» y dilo, o escríbelo aquí':'Escribe aquí lo que quieres apuntar'}"></textarea>
     <div class="row" style="align-items:center;margin-top:6px">${SR?'<button type="button" class="btn sec" id="dMic">🎤 Hablar</button>':''}<span class="mut" id="dEst" style="flex:1"></span></div>
     <div class="row acciones" style="justify-content:flex-end"><button type="button" class="btn sec" onclick="$('#dlg').close()">Cancelar</button><button type="button" class="btn" id="dOk">Apuntar</button></div>`;
@@ -2255,7 +2282,7 @@ function abrirDictado(){
 async function interpretarDictado(texto){
   const ctx={hoy:hoy(), dia_semana:DIAS_N[new Date(hoy()+'T12:00').getDay()], fincas:D.fincas.filter(f=>f.activa).map(f=>({id:f.id,nombre:f.nombre})),
     trabajadores:D.trabajadores.filter(t=>t.activo).map(t=>({id:t.id,nombre:t.nombre,...(t.empresa_id?{de:empNom(t.empresa_id)}:{})})), empresas:D.empresas.filter(e=>e.activa).map(e=>({id:e.id,nombre:e.nombre})),
-    faenas:JOR_TAREAS, categorias:AJ.cats, cobros:ING_TIPOS};
+    faenas:JOR_TAREAS, categorias:AJ.cats, cobros:ING_TIPOS, fincas_riego:D.fincas.filter(f=>f.activa&&f.riego).map(f=>f.id)};
   const {data,error}=await sb.functions.invoke('olivas-datos',{body:{accion:'dictado',texto,ctx}});
   if(error||data?.error) throw new Error(data?.error||error.message); return data; }
 function aplicarDictado(d,texto){
@@ -2269,6 +2296,7 @@ function aplicarDictado(d,texto){
   if(d.tipo==='pesada'){ const P=d.pesada||{}; Object.assign(ini,{kilos:n0(P.kilos),rendimiento:n0(P.rendimiento),almazara:P.almazara||undefined}); abrir('pesadas',null,limpio(ini)); }
   else if(d.tipo==='gasto'){ const G=d.gasto||{}; Object.assign(ini,{importe:n0(G.importe),litros:n0(G.litros),categoria:AJ.cats.includes(G.categoria)?G.categoria:undefined,concepto:G.concepto||undefined}); abrir('gastos',null,limpio(ini)); }
   else if(d.tipo==='cobro'){ const C=d.cobro||{}; Object.assign(ini,{importe:n0(C.importe),kilos:n0(C.kilos),tipo:ING_TIPOS.includes(C.tipo)?C.tipo:undefined}); abrir('ingresos',null,limpio(ini)); }
+  else if(d.tipo==='riego'&&D.fincas.some(x=>x.riego&&x.activa)){ const G=d.riego||{}; Object.assign(ini,{horas:n0(G.horas),m3:n0(G.m3)}); if(ini.finca_id&&!D.fincas.some(x=>x.id===ini.finca_id&&x.riego)) delete ini.finca_id; abrir('riegos',null,limpio(ini)); }
   else if(d.tipo==='tarea'){ const T=d.tarea||{}; Object.assign(ini,{titulo:T.titulo||texto,fecha:fe(T.fecha)?T.fecha:f,fecha_fin:fe(T.fecha_fin)?T.fecha_fin:undefined}); abrir('tareas',null,limpio(ini)); }
   else { ini.texto=(d.nota&&d.nota.texto)||texto; abrir('notas',null,limpio(ini)); }
   const h=$('#frm h3'); if(h) h.insertAdjacentHTML('afterend',`<div class="aviso ok" style="margin:0 0 10px">🎤 «${esc(texto)}»${aviso?`<div class="mut">${esc(aviso)}</div>`:''}<div class="mut" style="font-size:12px">Revisa y guarda.</div></div>`); }
@@ -2666,7 +2694,9 @@ const MAPA=[
   ['Apuntar cualquier cosa','El botón + de abajo a la derecha, o «Apuntar…» en Inicio',"abrirApuntar()"],
   ['Avisos en el móvil (heladas, AEMET, plagas, lo de cada mañana)','Más → Ajustes → Avisos en el móvil',"SUB.mas='ajustes';ir('mas')"],
   ['Apuntar hablando («hoy Pepe y Juan, recogida en el Arroyo»)','El botón + → «Dímelo y lo apunto»',"abrirDictado()"],
-  ['Cuánto regar esta semana (goteo)','Ficha de una finca con riego, o Tiempo',"irRiego()"],
+  ['Cuánto regar en cada riego y el agua del año','Ficha de una finca con riego, o Tiempo',"irRiego()"],
+  ['Cuándo da el agua cada comunidad (meses, días, horas, tope)','Más → Riego → toca la comunidad',"SUB.mas='riego';ir('mas')"],
+  ['Apuntar un riego','«He regado hoy» en la ficha de la finca, o el botón + → Riego hecho',"abrir('riegos')"],
   ['Trampas de mosca: capturas, picada y umbral','Campo → Muestras → Mosca',"abrirTrampa()"],
   ['Mapa de la finca con los recintos del SIGPAC','Ficha de la finca → Parcelas SIGPAC → Mapa',"irMapa()"],
   ['¿Cooperativa o puesto? Campaña a campaña','Cuentas → Precios, en «¿Cooperativa o puesto de compra?»',"SUB.cuentas='precios';ir('cuentas')"],
@@ -3107,6 +3137,7 @@ function agendaAvisos(){ const h=hoy(), fin14=addDias(h,13), A={}, add=(f,t)=>{ 
   D.riego_pagos.filter(r=>!r.pagado&&r.vencimiento).forEach(r=>venc(r.vencimiento,`Recibo de riego ${r.concepto} ${comNom(r.comunidad_id)} (${eur(r.importe)})`));
   const y=+h.slice(0,4); [y,y+1].forEach(yy=>plazos().forEach(p=>{ if(plazoHecho(p,yy)) return; const {ini,fin}=plazoAnio(p,yy); add(ini,`Se abre el plazo: ${p.nombre}`); [7,1].forEach(n=>add(addDias(fin,-n),`${p.nombre}: quedan ${n} ${n===1?'día':'días'}`)); add(fin,`${p.nombre}: último día`); }));
   const tr=trampasRevisar(); if(tr) add(tr,'Toca revisar las trampas de mosca');
+  for(let i=0;i<14;i++){ const d=addDias(h,i), fs=fincasRiegoDia(d); if(fs.length) add(d,`Toca regar ${yLista(fs.map(f=>f.nombre))}`); }
   return A; }
 async function guardarAgenda(){ if(!(AJ.push&&AJ.push.on)||!navigator.onLine||!USUARIO) return;
   const datos=agendaAvisos(), j=JSON.stringify(datos); if(j===AGENDA_ULT) return;
@@ -3389,7 +3420,7 @@ async function postTiempo(){
   <p class="mut">«Trabajar en el olivo» (pestugar, desvaretar, desbrozar, podar) y «Aceituna» tienen en cuenta si el olivo está mojado por lluvia, rocío o niebla. Atomizar evita las horas con la hoja mojada. ${f.umbral_hr!=null||Number(f.retraso_secado_h)?`Ajustes de ${esc(f.nombre)}: ${f.umbral_hr!=null?`se moja desde ${num(f.umbral_hr)} % de humedad`:''}${f.umbral_hr!=null&&Number(f.retraso_secado_h)?' y ':''}${Number(f.retraso_secado_h)?`${num(f.retraso_secado_h,1)} h más de secado`:''}.`:''} Es una estimación: apunta los días que no se pueda trabajar y la app se irá ajustando a esta finca.</p>
   ${cambia?`<div class="aviso">Según ${cal.n} días apuntados, en <b>${esc(f.nombre)}</b> ${cal.umbral!=null?`la oliva se moja ya con ${num(cal.umbral)} % de humedad (en general ${num(AJ.umb.moj_hr)} %)`:'la humedad a la que se moja es la normal'}${cal.retraso?` y tarda ${cal.retraso>0?num(cal.retraso,1)+' h más':num(-cal.retraso,1)+' h menos'} en secarse`:''}. <button class="btn sm" onclick="aplicarAjuste('${f.id}',${cal.umbral??'null'},${cal.retraso})">Aplicar</button></div>`:''}
   <p class="mut">Pulsa un día para verlo hora a hora. Los criterios se cambian en Más → Ajustes.</p></div>
-  ${sel?horario(w,sel):''}<div id="lluviaBox"></div>${f.riego?`<div id="riegoBox" data-f="${f.id}"></div>`:''}`;
+  ${sel?horario(w,sel):''}<div id="lluviaBox"></div>${f.riego?`<div id="riegoBox" data-f="${f.id}" data-donde="tiempo"></div>`:''}`;
   pintarLluvia(f); if(f.riego) pintarRiego(f);
 }
 let FINCA_H=null;
@@ -3739,7 +3770,7 @@ function avisosExtra(h){
 }
 
 // ===== Copia de seguridad =====
-const ORDEN_RESTAURAR=['comunidades','fincas','recintos','empresas','trabajadores','facturas','maquinas','factura_lineas','aplicaciones','tratamientos','gastos','ingresos','tareas','jornales','servicios','dias_perdidos','riego_pagos','labores','consejos','pesadas','notas','reuniones','almacen','viajes','muestras','mantenimientos','adelantos'];
+const ORDEN_RESTAURAR=['comunidades','fincas','recintos','empresas','trabajadores','facturas','maquinas','factura_lineas','aplicaciones','tratamientos','gastos','ingresos','tareas','jornales','servicios','dias_perdidos','riego_pagos','labores','consejos','pesadas','notas','reuniones','almacen','viajes','muestras','mantenimientos','adelantos','riegos'];
 function abrirCopia(){
   $('#frm').oninput=null; $('#frm').onchange=null; $('#frm').onsubmit=e=>e.preventDefault();
   const n=Object.values(D).reduce((a,l)=>a+l.length,0);
@@ -3920,32 +3951,132 @@ async function lluviaCampana(f, L){
 // ===== Riego por goteo: lo que gasta el olivo (ET0 × Kc × copa) menos la lluvia útil, en litros por olivo y horas de goteo =====
 const KC_OLIVO=[0,0.50,0.50,0.65,0.60,0.55,0.50,0.45,0.45,0.55,0.60,0.65,0.50]; // por mes (Orgaz y Fereres, olivar de Córdoba)
 function marcoM2(f){ const c=Number(f.calle_m); if(c>0) return c*c; const ha=Number(f.ha), ol=Number(f.olivos); if(ha>0&&ol>0){ const a=ha*1e4/ol; if(a>=16&&a<=400) return Math.round(a); } return 100; }
+// Año normal en la zona (Villanueva del Arzobispo, 2016-2025, archivo de Open-Meteo): ET0 y lluvia útil (días de 3 mm o más, al 75 %) de cada mes, en mm
+const ET0_N=[0,39.5,53.9,79.0,105.9,149.2,181.2,214.9,192.5,132.1,90.0,46.3,35.8], LLU_N=[0,36.0,38.7,76.0,47.7,27.8,12.9,0.3,1.2,13.7,38.2,46.6,41.4];
+const MESES_L=['','enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+const yLista=a=>a.length<2?a.join(''):a.slice(0,-1).join(', ')+' y '+a[a.length-1];
+const diaSem=d=>{ const g=new Date(d+'T12:00').getDay(); return g===0?7:g; };
+// Cómo riega una finca: lo que diga su comunidad (meses, días, horas y tope); las horas del turno pueden ser propias de la finca
+function confRiego(f){ const c=f.comunidad_id?D.comunidades.find(x=>x.id===f.comunidad_id):null;
+  const meses=(c?.riego_meses||[]).map(Number).filter(m=>m>=1&&m<=12), dias=(c?.riego_dias||[]).map(Number).filter(d=>d>=1&&d<=7);
+  const horasT=Number(f.horas_turno)>0?Number(f.horas_turno):Number(c?.horas_turno)>0?Number(c.horas_turno):null;
+  return {c, meses, modo:c?.riego_modo||null, dias, cada:Number(c?.riego_cada)||null, ref:c?.riego_ref||null, fijas:c?.horas_modo==='fijas', horasT,
+    dot:Number(c?.dotacion)>0?Number(c.dotacion):null, dotU:c?.dotacion_u||'olivo', puesta:!!(c&&(meses.length||c.riego_modo||c.horas_modo||Number(c.dotacion)>0))}; }
+function mesesTxt(ms){ if(!ms.length) return ''; const o=[...ms].sort((a,b)=>a-b), seguidos=o.every((m,i)=>!i||m===o[i-1]+1);
+  return seguidos&&o.length>1?`de ${MESES_L[o[0]]} a ${MESES_L[o[o.length-1]]}`:`en ${yLista(o.map(m=>MESES_L[m]))}`; }
+function diasTxt(cfg){ if(cfg.modo==='dias') return cfg.dias.length?`los ${yLista([...cfg.dias].sort((a,b)=>a-b).map(d=>DIAS_N[d%7]))}`:'faltan los días';
+  if(cfg.modo==='cada') return cfg.cada&&cfg.ref?`cada ${cfg.cada} días`:'falta cada cuántos días'; return cfg.modo==='demanda'?'cuando quieras':''; }
+function resumenRiegoCom(c){ const cfg=confRiego({comunidad_id:c.id});
+  if(!cfg.puesta) return `<a href="#" onclick="event.preventDefault();abrir('comunidades',D.comunidades.find(x=>x.id==='${c.id}'))">Pon cuándo da el agua</a>`;
+  return esc(['Agua '+(cfg.meses.length?mesesTxt(cfg.meses):'todo el año'), diasTxt(cfg), cfg.fijas?(cfg.horasT?`turnos de ${fHoras(cfg.horasT)}`:'horas fijas'):c.horas_modo==='libre'?'horas libres':'',
+    cfg.dot?`tope de ${num(cfg.dot)} m³${{olivo:' por olivo',ha:' por ha',total:' en total'}[cfg.dotU]||''} al año`:''].filter(Boolean).join(' · ')); }
+function esDiaRiego(cfg,d){ if(cfg.meses.length&&!cfg.meses.includes(+d.slice(5,7))) return false;
+  if(cfg.modo==='dias') return cfg.dias.includes(diaSem(d));
+  if(cfg.modo==='cada'&&cfg.cada&&cfg.ref) return ((difDias(cfg.ref,d)%cfg.cada)+cfg.cada)%cfg.cada===0;
+  return false; }
+// Riego anterior, el próximo y el siguiente a ese (con días fijos o cada X días)
+function turnos(cfg,h){ if(!(cfg.modo==='dias'&&cfg.dias.length)&&!(cfg.modo==='cada'&&cfg.cada&&cfg.ref)) return null;
+  let prev=null, next=null, sig=null;
+  for(let i=1;i<=60&&!prev;i++){ const d=addDias(h,-i); if(esDiaRiego(cfg,d)) prev=d; }
+  for(let i=0;i<=370&&!next;i++){ const d=addDias(h,i); if(esDiaRiego(cfg,d)) next=d; }
+  if(next) for(let i=1;i<=60&&!sig;i++){ const d=addDias(next,i); if(esDiaRiego(cfg,d)) sig=d; }
+  return {prev,next,sig}; }
+function haRiego(f){ const rs=D.recintos.filter(r=>r.finca_id===f.id&&r.regadio&&Number(r.sup_sigpac)>0); if(rs.length) return rs.reduce((a,r)=>a+Number(r.sup_sigpac),0);
+  const ha=Number(f.ha), ol=Number(f.olivos)||0, orr=olivosRiego(f); return ha>0?(ol>0&&orr>0&&orr<ol?ha*orr/ol:ha):null; }
+// El tope de agua del año que le toca a la finca (m³)
+function topeAgua(f,cfg){ if(!cfg.dot) return null;
+  if(cfg.dotU==='ha'){ const ha=haRiego(f); return ha?cfg.dot*ha:null; }
+  if(cfg.dotU==='total'){ const tot=D.fincas.filter(x=>x.activa&&x.riego&&x.comunidad_id===f.comunidad_id).reduce((a,x)=>a+olivosRiego(x),0); return tot?cfg.dot*olivosRiego(f)/tot:null; }
+  return cfg.dot*olivosRiego(f); }
+const lhOlivo=f=>(Number(f?.goteros_olivo)||0)*(Number(f?.gotero_lh)||0);
+function m3Riego(r,f){ if(Number(r.m3)>0) return Number(r.m3); const lh=lhOlivo(f); return Number(r.horas)>0&&lh>0?Number(r.horas)*lh*olivosRiego(f)/1000:0; }
+function aguaAnio(f){ const y=hoy().slice(0,4), rs=D.riegos.filter(r=>r.finca_id===f.id&&String(r.fecha).startsWith(y)).sort((a,b)=>a.fecha.localeCompare(b.fecha));
+  return {n:rs.length, m3:rs.reduce((a,r)=>a+m3Riego(r,f),0), rs}; }
+// Lo que pedirá el olivo desde hoy hasta que se acabe la temporada, en un año normal (mm)
+function necesidadResto(cfg,kr){ const h=hoy(), y=+h.slice(0,4), m0=+h.slice(5,7); let mm=0;
+  for(let m=m0;m<=12;m++){ if(cfg.meses.length&&!cfg.meses.includes(m)) continue; const dm=new Date(y,m,0).getDate(), fr=m===m0?(dm-(+h.slice(8,10))+1)/dm:1; mm+=fr*Math.max(0,ET0_N[m]*KC_OLIVO[m]*kr-LLU_N[m]); }
+  return mm; }
 function calcRiego(f, dias){
-  const h=hoy(), cobDef=!(Number(f.cobertura_pct)>0), cob=cobDef?35:Math.min(100,Number(f.cobertura_pct)), kr=Math.min(1,2*cob/100), m2=marcoM2(f), lh=(Number(f.goteros_olivo)||0)*(Number(f.gotero_lh)||0);
-  const tramo=(a,b)=>{ const o={et0:0,etc:0,ll:0,util:0,n:0};
-    for(let d=a;d<=b;d=addDias(d,1)){ const x=dias[d]; if(!x||x.et0==null) continue; const e=Number(x.et0)||0, ll=Number(x.ll)||0; o.n++; o.et0+=e; o.etc+=e*KC_OLIVO[+d.slice(5,7)]*kr; o.ll+=ll; if(ll>=3) o.util+=0.75*ll; }
+  const h=hoy(), cobDef=!(Number(f.cobertura_pct)>0), cob=cobDef?35:Math.min(100,Number(f.cobertura_pct)), kr=Math.min(1,2*cob/100), m2=marcoM2(f), lh=lhOlivo(f);
+  // lo que gasta el olivo entre dos días (ambos incluidos); los días sin datos del modelo se cuentan como un año normal
+  const tramo=(a,b)=>{ const o={a,b,et0:0,etc:0,ll:0,util:0,n:0,normal:0};
+    for(let d=a;d<=b;d=addDias(d,1)){ const x=dias[d], m=+d.slice(5,7);
+      if(x&&x.et0!=null){ const e=Number(x.et0)||0, ll=Number(x.ll)||0; o.et0+=e; o.etc+=e*KC_OLIVO[m]*kr; o.ll+=ll; if(ll>=3) o.util+=0.75*ll; }
+      else { const dm=new Date(+d.slice(0,4),m,0).getDate(); o.et0+=ET0_N[m]/dm; o.etc+=ET0_N[m]/dm*KC_OLIVO[m]*kr; o.util+=LLU_N[m]/dm; o.normal++; }
+      o.n++; }
     o.neto=Math.max(0,o.etc-o.util); o.litros=o.neto*m2; o.horas=lh>0?o.litros/lh:null; return o; };
-  return {cob, cobDef, kr, m2, lh, kc:KC_OLIVO[+h.slice(5,7)], olivos:olivosRiego(f), pas:tramo(addDias(h,-7),addDias(h,-1)), sig:tramo(h,addDias(h,6))};
+  return {cob, cobDef, kr, m2, lh, kc:KC_OLIVO[+h.slice(5,7)], olivos:olivosRiego(f), tramo, pas:tramo(addDias(h,-7),addDias(h,-1)), sig:tramo(h,addDias(h,6))};
 }
 const fHoras=h=>{ if(h==null) return ''; const m=Math.max(5,Math.round(h*12)*5); return m<60?`${m} min`:`${Math.floor(m/60)} h${m%60?' '+(m%60)+' min':''}`; };
+// Qué hay que poner en el próximo riego: lo que ha gastado el olivo desde el anterior (o desde el último apuntado);
+// con horas fijas, si el turno llega; con tope de agua, el tanto por ciento que se puede regar para que llegue hasta el final de la temporada
+function planRiego(f, dias){
+  const cfg=confRiego(f), h=hoy(), R=calcRiego(f,dias), A=aguaAnio(f), tope=topeAgua(f,cfg), hoyR=A.rs.filter(x=>x.fecha===h);
+  let T=turnos(cfg,h);
+  // si hoy ya ha regado en su turno, lo que cuenta es el turno siguiente
+  if(T&&T.next===h&&hoyR.length){ const nx=T.sig; let sg=null; if(nx) for(let i=1;i<=60&&!sg;i++){ const d=addDias(nx,i); if(esDiaRiego(cfg,d)) sg=d; } T={prev:h,next:nx,sig:sg}; }
+  const ultR=D.riegos.filter(r=>r.finca_id===f.id&&r.fecha<=h).map(r=>r.fecha).sort().pop()||null;
+  let N, desde, cuando=null;
+  if(T&&T.next){ desde=T.prev||addDias(T.next,-(T.sig?difDias(T.next,T.sig):7)); if(ultR&&ultR>desde&&ultR<T.next) desde=ultR; cuando=T.next; N=R.tramo(desde,addDias(T.next,-1)); }
+  else if(ultR&&difDias(ultR,h)<=7){ desde=ultR; N=R.tramo(ultR,addDias(h,-1)); }
+  else { desde=addDias(h,-7); N=R.tramo(desde,addDias(h,-1)); } // más de una semana sin regar: se cuenta solo la última (el suelo no guarda más)
+  let r=1, queda=null, falta=null;
+  if(tope&&!cfg.fijas){ queda=Math.max(0,tope-A.m3); falta=necesidadResto(cfg,R.kr)*R.m2*R.olivos/1000; r=falta>0?Math.min(1,queda/falta):1; }
+  const H=cfg.fijas?cfg.horasT:(N.horas!=null?N.horas*r:null);
+  return {cfg,R,T,A,tope,ultR,N,desde,cuando,r,queda,falta,H,hoyR}; }
 async function pintarRiego(f){
-  const box=$('#riegoBox'); if(!box||box.dataset.f!==f.id) return;
+  const box=$('#riegoBox'); if(!box||box.dataset.f!==f.id) return; const enTiempo=box.dataset.donde==='tiempo';
+  const cfg=confRiego(f), h=hoy(), mes=+h.slice(5,7), A0=aguaAnio(f), tope0=topeAgua(f,cfg), cN=cfg.c?esc(cfg.c.nombre):'la comunidad';
+  const linAgua=(A,tope)=>tope?`Agua de este año: <b>${num(A.m3)} de ${num(tope)} m³</b> (${num(A.m3/tope*100)} %), en ${A.n} ${A.n===1?'riego':'riegos'}.`:A.n?`Este año: ${A.n} ${A.n===1?'riego':'riegos'}${A.m3?`, ${num(A.m3)} m³`:''}.`:'';
+  if(cfg.meses.length&&!cfg.meses.includes(mes)){ box.innerHTML=enTiempo?'':`<div class="card"><h2>💧 Riego · ${esc(f.nombre)}</h2><p class="mut" style="margin:0">Fuera de temporada: ${cN} da agua ${mesesTxt(cfg.meses)}. ${linAgua(A0,tope0)}</p></div>`; return; }
   if(f.lat==null||f.lon==null){ box.innerHTML=`<div class="card"><h2>💧 Riego</h2><p class="mut">Pon la ubicación de la finca (Editar datos) para calcular cuánto regar.</p></div>`; return; }
   let dias; try{ dias=await diarioModelo(f); }catch(e){ return; }
   const b=$('#riegoBox'); if(!b||b.dataset.f!==f.id) return;
-  const R=calcRiego(f,dias), P=R.pas, S=R.sig, l=x=>Math.round(x.litros), mes=+hoy().slice(5,7); if(!P.n){ b.innerHTML=''; return; }
-  const cubre=P.util>=P.etc;
-  b.innerHTML=`<div class="card"><h2>💧 Riego esta semana · ${esc(f.nombre)}</h2>
-    ${cubre?`<div class="aviso ok">La lluvia de los últimos 7 días (${num(P.ll,1)} mm) ha cubierto lo que ha gastado el olivo: <b>no hace falta regar</b>.</div>`
-      :`<div class="kpis"><div class="kpi"><span>Por olivo, lo de estos 7 días</span><b>${num(l(P))} l</b></div><div class="kpi"><span>${R.lh?`Con ${num(f.goteros_olivo)} goteros de ${num(f.gotero_lh,Number(f.gotero_lh)%1?1:0)} l/h`:'Horas de goteo'}</span><b>${R.lh?fHoras(P.horas):'—'}</b></div></div>
-      <p style="margin:8px 0 6px">Con riego deficitario, que es lo normal con la dotación de la comunidad, sobre la mitad: <b>${num(Math.round(l(P)/2))} l</b>${R.lh?` (${fHoras(P.horas/2)})`:''}.${R.olivos?` Toda la finca (${num(R.olivos)} olivos): ${num(P.litros*R.olivos/1000,1)} m³ a la semana.`:''}</p>`}
-    <p style="margin:6px 0">Próximos 7 días (previsión): ${S.neto>0?`<b>${num(l(S))} l por olivo</b>${R.lh?` (${fHoras(S.horas)} de goteo)`:''}`:'<b>la lluvia lo cubre</b>'}.</p>
-    ${R.lh?'':'<p class="mut">Pon cuántos goteros tiene cada olivo y los litros por hora de cada uno (Editar datos) para saber las horas de riego.</p>'}
+  const P=planRiego(f,dias), {R,T,A,N,H,r}=P, l=x=>Math.round(x), yaHoy=!P.cuando&&P.hoyR.length, cubre=!yaHoy&&N.litros<=0;
+  const dT=d=>d===h?'hoy':d===addDias(h,-1)?'ayer':d===addDias(h,1)?'mañana':`el ${diaSemana(d)}`;
+  const delD=d=>d===h?'de hoy':d===addDias(h,-1)?'de ayer':d===addDias(h,1)?'de mañana':`del ${diaSemana(d)}`;
+  const gasto=P.ultR&&P.desde===P.ultR?`desde tu último riego (${dT(P.desde)})`:T&&P.desde===T.prev?`desde el riego ${delD(P.desde)}`:P.cuando?`en los ${N.n} días antes de ese riego`:`en los últimos ${difDias(P.desde,h)} días`;
+  const ha=P.cuando&&P.cuando>h?'habrá gastado':'ha gastado';
+  const kpi=(t,v)=>`<div class="kpi"><span>${t}</span><b>${v}</b></div>`, gtx=R.lh?`${num(f.goteros_olivo)} goteros de ${num(f.gotero_lh,Number(f.gotero_lh)%1?1:0)} l/h`:'';
+  let cab='', txt='';
+  if(yaHoy){ cab=kpi('Último riego','hoy')+kpi('Próximos 7 días',R.sig.neto>0?`${num(l(R.sig.litros*r))} l/olivo`:'nada');
+    txt=`Hoy ya has regado. En los próximos 7 días el olivo ${R.sig.neto>0?`gastará unos <b>${num(l(R.sig.litros*r))} l por olivo</b>${R.lh?` (${fHoras(R.sig.horas*r)} de goteo)`:''}`:'tendrá bastante con la lluvia prevista'}.`; }
+  else if(cfg.fijas){ const lt=H&&R.lh?H*R.lh:null, cov=lt!=null&&N.litros>0?lt/N.litros:null;
+    cab=kpi(P.cuando?'Próximo riego':'Riego',P.cuando?dT(P.cuando):'—')+kpi(`Tu turno${lt?` (${num(lt)} l/olivo)`:''}`,H?fHoras(H):'—');
+    txt=!H?`Pon las horas de cada turno en ${cN} (Más → Riego), o en la finca si son otras.`:!R.lh?'Pon los goteros por olivo y los litros/hora (Editar datos) para saber cuánta agua da tu turno.'
+      :cubre?'La lluvia ha cubierto lo que ha gastado el olivo: si puedes, sáltate este riego.'
+      :cov>=1.15?`Te sobra: los ${num(l(N.litros))} l por olivo que ${ha} ${gasto} se reponen con <b>${fHoras(N.horas)}</b>.`
+      :`Con tu turno das el <b>${num(Math.min(cov,1)*100)} %</b> de los ${num(l(N.litros))} l por olivo que ${ha} ${gasto}.`; }
+  else { cab=(P.cuando?kpi('Próximo riego',dT(P.cuando)):kpi('Por olivo',cubre?'nada':`${num(l(N.litros*r))} l`))+kpi(gtx?'Pon':'Horas de goteo',cubre?'nada':H!=null?fHoras(H):'—');
+    txt=cubre?'La lluvia ha cubierto lo que ha gastado el olivo: no hace falta regar.'
+      :`${P.cuando?`En el riego ${delD(P.cuando)}`:'Para reponer'}: <b>${num(l(N.litros*r))} l por olivo</b>${gtx?` (${gtx})`:''}${r<1?`, el ${num(r*100)} % de los ${num(l(N.litros))} l que ${ha} ${gasto}`:`, lo que ${ha} ${gasto}`}.`; }
+  const fin=cfg.meses.length?MESES_L[Math.max(...cfg.meses.filter(m=>m>=mes))]:'diciembre';
+  const reparto=P.tope&&!cfg.fijas?(r>=0.995?`Con lo que te queda (${num(P.queda)} m³) llegas a regar todo lo que pide el olivo hasta final de ${fin}.`
+      :`Te quedan ${num(P.queda)} m³ y en un año normal harían falta ${num(P.falta)} hasta final de ${fin}: por eso, en cada riego el ${num(r*100)} % de lo que pide.`):'';
+  const sig=P.cuando&&T.sig?`Después: ${dT(T.sig)}.`:'', prox=!P.cuando&&!yaHoy&&!cubre?`Próximos 7 días (previsión): ${R.sig.neto>0?`${num(l(R.sig.litros*r))} l por olivo`:'la lluvia lo cubre'}.`:'';
+  const btn=P.hoyR.length?`<span class="pos" style="align-self:center">✓ Hoy has regado${P.hoyR[0].horas?' '+fHoras(Number(P.hoyR[0].horas)):''}</span>`
+      :`<button class="btn sm" onclick="regarHoy('${f.id}',${H!=null&&!cubre?Math.round(H*100)/100:'null'})">✓ He regado hoy${H!=null&&!cubre?` (${fHoras(H)})`:''}</button>`;
+  const ult=enTiempo?'':A.rs.slice(-3).reverse().map(x=>`<div class="lab click" onclick="abrir('riegos',D.riegos.find(y=>y.id==='${x.id}'))">${fFecha(x.fecha)}${x.horas?' · '+fHoras(Number(x.horas)):''}${m3Riego(x,f)?` · ${num(m3Riego(x,f))} m³`:''}</div>`).join('');
+  b.innerHTML=`<div class="card"><h2>💧 Riego · ${esc(f.nombre)}</h2>
+    <div class="kpis">${cab}</div>
+    <p style="margin:8px 0 6px">${txt}</p>
+    ${reparto?`<p style="margin:6px 0">${reparto}</p>`:''}${linAgua(A,P.tope)?`<p class="mut" style="margin:6px 0">${linAgua(A,P.tope)}</p>`:''}${sig||prox?`<p class="mut" style="margin:6px 0">${sig}${prox}</p>`:''}
+    <div class="row" style="gap:6px;flex-wrap:wrap;margin:8px 0">${btn}<button class="btn sec sm" onclick="APUNTAR_FINCA='${f.id}';abrir('riegos',null,{finca_id:'${f.id}'})">Apuntar otro riego</button></div>
+    ${ult?`<div style="margin-top:6px"><span class="mut">Últimos riegos</span>${ult}</div>`:''}
+    ${!enTiempo&&!cfg.puesta&&cfg.c?`<p class="mut">Pon en <a href="#" onclick="event.preventDefault();abrir('comunidades',D.comunidades.find(x=>x.id==='${cfg.c.id}'))">${cN}</a> en qué meses da agua, qué días te toca y cuántas horas: así la cuenta sale por cada riego.</p>`:''}
+    ${R.lh||cfg.fijas?'':'<p class="mut">Pon cuántos goteros tiene cada olivo y los litros por hora de cada uno (Editar datos) para saber las horas de riego.</p>'}
     <details><summary class="mut">Cómo se calcula</summary>
-      <p style="margin:6px 0">Últimos 7 días: el olivo ha gastado <b>${num(P.etc,1)} mm</b> (${num(P.et0,1)} mm de evapotranspiración × ${num(R.kc,2)} del olivo en ${MESES[mes]} × ${num(R.kr,2)} por la copa)${P.ll>0?` y han caído ${num(P.ll,1)} mm de lluvia (${num(P.util,1)} útiles)`:' y no ha llovido'}. Los próximos 7 días gastará ${num(S.etc,1)} mm${S.ll>0?` con ${num(S.ll,1)} mm de lluvia prevista`:''}.</p>
-      <p class="mut" style="font-size:12px">Orientativo, con el método de la FAO: evapotranspiración de Open-Meteo, coeficientes del olivar de Córdoba, la copa cubre el ${num(R.cob)} % del suelo${R.cobDef?' (lo normal; cámbialo en Editar datos)':''} y cada olivo tiene ${num(R.m2)} m². Solo cuenta la lluvia de 3 mm o más y no tiene en cuenta el agua que guarda el suelo.</p></details>
-    ${[11,12,1,2].includes(mes)?'<p class="mut" style="font-size:12px;margin:6px 0 0">En invierno normalmente no se riega, salvo años muy secos.</p>':''}</div>`;
+      <p style="margin:6px 0">${N.n?`Del ${fFecha(N.a)} al ${fFecha(N.b)} el olivo gasta ${num(N.etc,1)} mm: ${num(N.et0,1)} mm de evapotranspiración × ${num(R.kc,2)} del olivo en ${MESES[mes]} × ${num(R.kr,2)} por la copa${N.ll>0?`, menos ${num(N.util,1)} mm de lluvia útil (han caído ${num(N.ll,1)})`:''}${N.normal?` (${N.normal} ${N.normal===1?'día':'días'} sin previsión, contados como un año normal)`:''}. Por olivo: mm × ${num(R.m2)} m².`:`Cada día el olivo gasta la evapotranspiración × ${num(R.kc,2)} del olivo en ${MESES[mes]} × ${num(R.kr,2)} por la copa, menos la lluvia útil. Por olivo: mm × ${num(R.m2)} m².`}</p>
+      <p class="mut" style="font-size:12px">Orientativo, con el método de la FAO: evapotranspiración de Open-Meteo, coeficientes del olivar de Córdoba, la copa cubre el ${num(R.cob)} % del suelo${R.cobDef?' (lo normal; cámbialo en Editar datos)':''}. Solo cuenta la lluvia de 3 mm o más y no tiene en cuenta el agua que guarda el suelo.${P.tope?' El tope se reparte con lo que pide el olivo en un año normal en tu zona (2016-2025).':''}</p></details></div>`;
 }
+async function regarHoy(fid,horas){ const r=await insertar('riegos',{finca_id:fid,fecha:hoy(),horas:horas==null?null:horas});
+  if(!r.ok){ toast('Error: '+motivoError(r.error)); return; } if(!r.offline) await cargar('riegos'); render(); toast('Riego apuntado'); }
+// Avisos de riego: hoy y mañana (con días fijos o cada X días)
+function fincasRiegoDia(d){ return D.fincas.filter(f=>f.activa&&f.riego&&esDiaRiego(confRiego(f),d)&&!D.riegos.some(r=>r.finca_id===f.id&&r.fecha===d)); }
+function avisosRiego(h){ const out=[], a=fincasRiegoDia(h), m=fincasRiegoDia(addDias(h,1)).filter(f=>!a.includes(f)), bl=l=>yLista(l.map(f=>`<b>${esc(f.nombre)}</b>`));
+  if(a.length) out.push({c:'',t:`Hoy te toca regar ${bl(a)}: toca para ver cuántas horas`,ord:6,fn:`verFicha('fincas','${a[0].id}')`});
+  if(m.length) out.push({c:'',t:`Mañana toca regar ${bl(m)}`,ord:30,fn:`verFicha('fincas','${m[0].id}')`});
+  return out; }
 let PLAZOS_MIRADO=false;
 async function comprobarPlazos(forzar){
   const y=+hoy().slice(0,4); PLAZOS_MIRADO=true;
