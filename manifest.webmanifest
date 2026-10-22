@@ -5,6 +5,7 @@
   "lang": "es",
   "start_url": "./",
   "scope": "./",
+  "id": "/olivas/",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#f6f5ef",
