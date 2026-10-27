@@ -183,7 +183,7 @@ details.adv{margin:4px 0 10px}details.adv summary{cursor:pointer;color:var(--olv
 
 <script>
 // ===== Configuración =====
-const VERSION = '3.41';
+const VERSION = '3.42';
 const VERSION_FECHA = '27 oct 2026';
 const CREDITOS = `Olivas v${VERSION} (${VERSION_FECHA}) · © 2026 Alfonso Carrascosa Martínez · Hecha con Claude (Anthropic)`;
 const SUPA_URL = 'https://kseyndjbmkaflpoqitsj.supabase.co';
@@ -2051,7 +2051,7 @@ async function contextoTecnico(pregunta){
     lo_que_decidio_de_tus_consejos:D.consejos.slice(0,6).flatMap(c=>(c.respuesta?.recomendaciones||[]).filter(r=>r.estado).map(r=>({consejo_del:c.fecha, titulo:r.titulo, fincas:r.fincas||[], decision:{hecha:'hecho',no_toca:'no hace falta',pospuesta:'ahora no'}[r.estado.e]||r.estado.e, el:r.estado.fecha, motivo:r.estado.motivo||undefined, hasta:r.estado.hasta||undefined}))),
     labores_dejadas_de_lado:apartadas().filter(x=>x.estado!=='parada').map(x=>({labor:nomL(x.labor), finca:x.finca_id?fincaNom(x.finca_id):'todas', decision:x.estado==='no_toca'?'no hace falta':'ahora no', hasta:x.hasta, motivo:x.notas||undefined})),
     // lo que tiene en la nave y la dosis que le dijeron en la cooperativa o la tienda (por cuba)
-    almacen:D.almacen.filter(a=>a.activo!==false).map(a=>({producto:a.nombre, tipo:a.tipo||undefined, quedan:a.cantidad!=null?`${Number(a.cantidad)} ${a.unidad||''}`.trim():undefined, dosis_que_le_dijeron:a.dosis_cant&&a.dosis_cuba?`${Number(a.dosis_cant)} ${a.dosis_ud||''} en ${Number(a.dosis_cuba)} l de agua`:null, dosis_etiqueta:a.etiqueta_dosis?`${Number(a.etiqueta_dosis)}${Number(a.etiqueta_dosis_max)>Number(a.etiqueta_dosis)?'–'+Number(a.etiqueta_dosis_max):''} ${a.etiqueta_ud||''}`.trim():undefined, caduca:a.caduca||undefined, notas:a.notas||undefined})),
+    almacen:D.almacen.filter(a=>a.activo!==false).map(a=>({producto:a.nombre, que_es:(f=>f?{tipo:f.tipo, materia_activa_o_composicion:f.ma, formulacion:f.formulacion, estado:f.estado, para_que:f.para_que, no_mezclar_con:f.no_mezclar?.length?f.no_mezclar:undefined, precauciones:f.precauciones?.length?f.precauciones:undefined, confirmado_por_el_agricultor:!!f.confirmada}:'SIN IDENTIFICAR: no supongas qué es por el nombre')(fichaDe(a)), tipo_en_almacen:a.tipo||undefined, quedan:a.cantidad!=null?`${Number(a.cantidad)} ${a.unidad||''}`.trim():undefined, dosis_que_le_dijeron:a.dosis_cant&&a.dosis_cuba?`${Number(a.dosis_cant)} ${a.dosis_ud||''} en ${Number(a.dosis_cuba)} l de agua`:null, dosis_etiqueta:a.etiqueta_dosis?`${Number(a.etiqueta_dosis)}${Number(a.etiqueta_dosis_max)>Number(a.etiqueta_dosis)?'–'+Number(a.etiqueta_dosis_max):''} ${a.etiqueta_ud||''}`.trim():undefined, caduca:a.caduca||undefined, notas:a.notas||undefined})),
     // circulares de la cooperativa de los últimos 4 meses, tal como las ha guardado el agricultor
     recomendaciones_cooperativa:D.recomendaciones.filter(x=>x.fecha>=hace(120)).slice(0,6).map(x=>{ const d=x.datos||{}; return {fecha:x.fecha, de:x.emisor||null, asunto:x.titulo||null, resumen:d.resumen||null, zona:d.zona||undefined, problemas:d.problemas||[],
       recomendaciones:(d.recomendaciones||[]).map(r=>({titulo:r.titulo, tipo:r.tipo, cuando:r.cuando||undefined, desde:r.desde||undefined, hasta:r.hasta||undefined, productos:r.productos||[], condiciones:r.condiciones||undefined})), avisos:d.avisos||[], nota_suya:x.notas||undefined}; }),
@@ -2293,6 +2293,7 @@ function abrirAplicacion(apl=null, cubaId=null){
     <div class="row" style="margin-bottom:10px"><button type="button" class="btn sec sm" id="aMas">+ Otro producto</button><button type="button" class="btn sec sm" id="aGuardarCuba">Guardar como cuba estándar</button></div>
     <datalist id="dlProd">${nombres.map(n=>`<option value="${esc(n)}">`).join('')}</datalist>
     <div id="aRes" class="aviso ok"></div>
+    <div id="aMez"></div>
     <span class="clab">Para qué</span>${chips('motivo', MOTIVOS_APL.map(x=>[x,x]), v.motivo)}
     <label>Día<input type="date" name="fecha" value="${v.fecha}"></label>
     <div class="chips" style="margin-top:-6px"><button type="button" class="chip" data-qf="fecha" data-n="0">Hoy</button><button type="button" class="chip" data-qf="fecha" data-n="-1">Ayer</button></div>
@@ -2313,6 +2314,7 @@ function abrirAplicacion(apl=null, cubaId=null){
       el.innerHTML = pc ? `Por cuba: <b>${fCant(pc)}</b>${nc?` · en total: <b>${fCant({n:pc.n*nc,u:pc.u})}</b>`:''}` : (/ha$/.test(F[`du_${i}`].value)&&!lha?'Para dosis por hectárea pon las hectáreas de la finca.':''); });
     $('#aRes').innerHTML = tot ? `Caldo: <b>${num(tot)} l</b>${ol?` · <b>${num(tot/ol,1)} l por olivo</b>`:''}${lha?` · ${num(lha)} l/ha`:''}` : 'Pon la cuba y el nº de cubas para calcular.';
     if(f&&!(f.cubas_copa>0)&&tot) $('#aRes').innerHTML+=`<br><span class="mut">Pon en la finca cuántas cubas gastas y la próxima vez se rellena solo.</span>`;
+    $('#aMez').innerHTML=htmlMezcla(vivas().map(i=>F[`pr_${i}`]?.value.trim()));
   };
   const deAlm=(i)=>{ const pr=F[`pr_${i}`]; if(!pr||!pr.value.trim()) return; const x=dosisDeAlm(pr.value); if(!x) return;
     if(x.valor&&!F[`dv_${i}`].value){ F[`dv_${i}`].value=String(x.valor).replace('.',','); const g=F.querySelector(`[data-chips="du_${i}"]`); F[`du_${i}`].value=x.unidad; g?.querySelectorAll('.chip').forEach(b=>b.classList.toggle('on',b.dataset.val===x.unidad)); toast(`Dosis de ${x.a.nombre} puesta (la de ${x.de==='tienda'?'la tienda':'la etiqueta'})`); }
@@ -2688,6 +2690,7 @@ function vFichaAlm(a){
   fab(null);
   return cabFicha('almacen',a.id)+`<div class="card"><h2>${esc(a.nombre)}${a.activo===false?' <span class="tag">gastado</span>':''}</h2>
     <p class="mut">${esc([a.tipo,a.num_registro?'Reg. '+a.num_registro:'',a.materia_activa].filter(Boolean).join(' · '))}${a.dosis_cant?` · dosis de tienda: ${num(a.dosis_cant,2)} ${esc(a.dosis_ud||'')}${a.dosis_cuba?' en '+num(a.dosis_cuba)+' l':''}`:''}</p></div>
+  ${htmlFicha(a)}
   <div class="kpis"><div class="kpi"><span>Quedan</span><b>${a.cantidad!=null?num(a.cantidad,2)+' '+esc(ud):'—'}</b></div><div class="kpi"><span>Echado ${esc(CAMP)}</span><b>${cant?num(cant,2)+' '+esc(ud):'—'}</b></div><div class="kpi"><span>Coste ${esc(CAMP)}</span><b>${coste?eur(coste):'—'}</b></div>${pUlt?`<div class="kpi"><span>Último precio</span><b>${eur(pB(pUlt))}${ud?'/'+esc(ud):''}</b></div>`:''}</div>
   <div class="card"><h2>Cuándo y dónde se echó</h2>${usos.length?`<table>${usos.slice(0,40).map(t=>{ const p=precioEn(t.fecha), q=enUd(t); return `<tr class="click" ${t.aplicacion_id?`onclick="abrirAplicacion(D.aplicaciones.find(x=>x.id==='${t.aplicacion_id}'))"`:`data-ed="tratamientos:${t.id}"`}><td>${fFecha(t.fecha)}<div class="mut">${esc(fincaNom(t.finca_id))}${t.dosis?' · '+esc(t.dosis):''}${t.motivo?' · '+esc(t.motivo):''}</div></td><td class="n">${t.cantidad!=null?num(t.cantidad,2)+' '+esc(t.unidad||ud):''}</td><td class="n" style="width:76px">${p&&q?eur(q*p):''}</td></tr>`; }).join('')}</table><p class="mut" style="font-size:12px">El coste sale del precio (con IVA) de la última compra antes de ese día.</p>`:'<p class="mut">Todavía no se ha echado (o se apuntó con otro nombre).</p>'}</div>
   <div class="card"><h2>Compras</h2>${compras.length?`<table>${compras.slice(0,20).map(({l,f})=>`<tr><td>${fFecha(f.fecha)}<div class="mut">${esc(f.proveedor||'')}</div></td><td class="n">${l.cantidad!=null?num(l.cantidad,2)+' '+esc(l.unidad||ud):''}</td><td class="n" style="width:90px">${eur(l.importe)}${precioUd(l)?`<div class="mut" style="font-size:12px">${eur(precioUd(l))}/ud</div>`:''}</td></tr>`).join('')}</table>`:'<p class="mut">Sin facturas de este producto. Si escaneas la factura, aparecerá aquí.</p>'}</div>
@@ -3907,6 +3910,91 @@ function tipoAlm(l){ const t=`${l.categoria} ${l.producto}`; return /abono/i.tes
 function cantLinea(l,ua){ const q=normU(l.cantidad,l.unidad); if(!q) return null; if(q.u!=='ud'&&(!ua||q.u===ua)) return q;
   const m=/(\d+(?:[.,]\d+)?)\s*(kgs?|gr?|lts?|litros?|l|ml|cc)\b/i.exec(`${l.producto||''} ${l.nombre_comun||''}`), t=m&&normU(pn(m[1]),m[2]);
   if(t&&t.u!=='ud'&&(!ua||t.u===ua)) return {n:Math.round(q.n*t.n*1000)/1000,u:t.u}; return ua&&ua!=='ud'?null:q; }
+// ===== Qué es cada producto (ficha buscada en internet y confirmada por el agricultor) y si se pueden mezclar =====
+// Las fichas van en los ajustes (AJ.fichas[id del almacén]) para no tocar la tabla del almacén.
+const TIPOS_PROD=['fungicida','insecticida','herbicida','abono foliar','abono al suelo','corrector de carencias','bioestimulante','corrector de pH / acondicionador del agua','mojante / adherente','aceite','otro'];
+const fichaDe=a=>a?(AJ.fichas||{})[a.id]||null:null;
+async function identificarProducto(aid){ const a=D.almacen.find(x=>x.id===aid); if(!a) return;
+  if(!navigator.onLine){ toast('Para identificar un producto necesitas cobertura'); return; }
+  $('#frm').oninput=null; $('#frm').onchange=null; $('#frm').onsubmit=e=>e.preventDefault();
+  $('#frm').innerHTML=`<h3>Buscando «${esc(a.nombre)}»…</h3><p class="mut">Miro la ficha del fabricante y el registro de fitosanitarios. Tarda entre 15 y 50 segundos.</p><div class="bar"><i style="width:100%;animation:none"></i></div>`;
+  if(!$('#dlg').open) $('#dlg').showModal();
+  try{ const l=D.factura_lineas.find(x=>(x.nombre_comun||'')===a.nombre||(x.producto||'')===a.nombre), f=l&&D.facturas.find(x=>x.id===l.factura_id);
+    const {data:res,error}=await sb.functions.invoke('ficha-producto',{body:{producto:{nombre:a.nombre,factura:l?.producto||null,tipo:a.tipo,num_registro:a.num_registro||null,notas:a.notas||null,proveedor:f?.proveedor||null}}});
+    if(error){ let m=error.message; try{ const j=await error.context.json(); m=j.error||m; }catch(e){} throw new Error(m); }
+    if(!res?.datos) throw new Error(res?.error||'No se pudo identificar');
+    revisarFicha(a,{...res.datos,fuentes:res.fuentes||[],busco:res.busco});
+  }catch(e){ $('#frm').innerHTML=`<h3>No se pudo identificar</h3><p class="neg">${esc(e.message)}</p><p class="mut">Puedes escribir tú lo que es.</p><div class="row acciones" style="justify-content:flex-end"><button type="button" class="btn sec" onclick="$('#dlg').close()">Cerrar</button><button type="button" class="btn" onclick="revisarFicha(D.almacen.find(x=>x.id==='${a.id}'),{})">Escribirlo yo</button></div>`; } }
+function revisarFicha(a,d){ if(!a) return; d=d||{}; const ma=(d.materias_activas||[]).map(m=>[m.nombre,m.riqueza].filter(Boolean).join(' ')).join(', '), mz=d.mezclas||{};
+  $('#frm').innerHTML=`<h3>¿Qué es ${esc(a.nombre)}?</h3>
+    ${d.confianza?`<p class="${d.confianza==='baja'?'neg':'mut'}">${d.busco?'Buscado en internet':'Sin buscar en internet'} · confianza <b>${esc(d.confianza)}</b>${d.dudas?` · ${esc(d.dudas)}`:''}</p>`:''}
+    <p class="mut">Revísalo con la etiqueta y corrige lo que no cuadre: el técnico y los avisos de mezcla usarán esto.</p>
+    <label>Nombre comercial<input name="nombre_comercial" value="${esc(d.nombre_comercial||a.nombre)}"></label>
+    <span class="clab">Qué es</span><div class="chips" data-chips="tipo">${TIPOS_PROD.map(t=>`<button type="button" class="chip ${t===d.tipo?'on':''}" data-val="${esc(t)}">${esc(t)}</button>`).join('')}</div><input type="hidden" name="tipo" value="${esc(d.tipo||'')}">
+    <label>Materia activa o composición<input name="ma" value="${esc([ma,d.composicion].filter(Boolean).join(' · '))}" placeholder="p. ej. óxido cuproso 75 %"></label>
+    <div class="grid2"><label>Formulación<input name="formulacion" value="${esc(d.formulacion||'')}" placeholder="WG, SC, SL…"></label><label>Fabricante<input name="fabricante" value="${esc(d.fabricante||'')}"></label></div>
+    <span class="clab">Viene en</span><div class="chips" data-chips="estado"><button type="button" class="chip ${d.estado==='sólido'?'on':''}" data-val="sólido">sólido (kg)</button><button type="button" class="chip ${d.estado==='líquido'?'on':''}" data-val="líquido">líquido (litros)</button></div><input type="hidden" name="estado" value="${esc(d.estado||'')}">
+    <label>Para qué sirve<input name="para_que" value="${esc(d.para_que||'')}"></label>
+    <label>No mezclar con (uno por línea)<textarea name="nomz" rows="2">${esc((mz.no_mezclar_con||[]).join('\n'))}</textarea></label>
+    <label>Precauciones al mezclar (una por línea)<textarea name="prec" rows="2">${esc([...(mz.precauciones||[]),d.ph?`pH: ${d.ph}`:''].filter(Boolean).join('\n'))}</textarea></label>
+    ${d.dosis_olivo&&(d.dosis_olivo.min||d.dosis_olivo.max)?`<p class="mut">Dosis en olivo según lo encontrado: ${d.dosis_olivo.min?num(d.dosis_olivo.min):''}${d.dosis_olivo.max&&d.dosis_olivo.max!==d.dosis_olivo.min?'–'+num(d.dosis_olivo.max):''} ${esc(d.dosis_olivo.unidad||'')}${d.plazo_seguridad_dias?` · plazo de seguridad ${d.plazo_seguridad_dias} días`:''}${d.registro?` · registro ${esc(d.registro)}`:''}. ${!(a.etiqueta_dosis>0)?'Se apunta como dosis de la etiqueta.':''}</p>`:''}
+    ${(d.fuentes||[]).length?`<details><summary class="mut">Dónde lo he mirado</summary>${d.fuentes.map(f=>`<div><a href="${esc(f.url)}" target="_blank" rel="noopener">${esc(f.titulo||f.url)}</a></div>`).join('')}</details>`:''}
+    <div class="row acciones" style="justify-content:flex-end"><button type="button" class="btn sec" onclick="$('#dlg').close()">Cancelar</button><button class="btn" id="fOk">Es correcto, guardar</button></div>`;
+  const F=$('#frm'); activarChips(F);
+  F.onsubmit=async e=>{ e.preventDefault(); const lin=t=>t.split('\n').map(x=>x.trim()).filter(Boolean);
+    const fi={nombre_comercial:F.nombre_comercial.value.trim()||null, tipo:F.tipo.value||null, ma:F.ma.value.trim()||null, formulacion:F.formulacion.value.trim().toUpperCase()||null, fabricante:F.fabricante.value.trim()||null, estado:F.estado.value||null, para_que:F.para_que.value.trim()||null,
+      no_mezclar:lin(F.nomz.value), precauciones:lin(F.prec.value), plazo:d.plazo_seguridad_dias||null, registro:d.registro||null, fuentes:d.fuentes||[], fecha:hoy(), confirmada:true};
+    AJ.fichas={...(AJ.fichas||{}),[a.id]:fi}; await guardarAjustes(true);
+    // lo que falte en el producto, de la ficha: dosis de la etiqueta, registro y litros o kilos
+    const u={}, dz=d.dosis_olivo; if(dz&&!(a.etiqueta_dosis>0)&&(dz.min||dz.max)&&['g/100L','cc/100L','%','kg/ha','l/ha'].includes(dz.unidad)){ u.etiqueta_dosis=dz.min||dz.max; if(dz.max&&dz.min&&dz.max>dz.min) u.etiqueta_dosis_max=dz.max; u.etiqueta_ud=dz.unidad; }
+    if(d.registro&&!a.num_registro) u.num_registro=d.registro;
+    if(Object.keys(u).length){ let r=await sb.from('olv_almacen').update(u).eq('id',a.id); if(r.error&&/etiqueta_dosis_max/.test(r.error.message||'')){ delete u.etiqueta_dosis_max; r=await sb.from('olv_almacen').update(u).eq('id',a.id); } await cargar('almacen',[a.id]); }
+    $('#dlg').close(); render(); toast(`Ficha de ${a.nombre} guardada`); };
+  if(!$('#dlg').open) $('#dlg').showModal(); }
+function htmlFicha(a){ const f=fichaDe(a);
+  if(!f) return `<div class="card"><h2>¿Qué es?</h2><p class="mut">Aún no está identificado: el técnico solo sabe el nombre. Lo busco en internet (fabricante, registro de fitosanitarios) y tú lo confirmas.</p><button class="btn sm" onclick="identificarProducto('${a.id}')">🔎 Identificar</button> <button class="btn sec sm" onclick="revisarFicha(D.almacen.find(x=>x.id==='${a.id}'),{})">Escribirlo yo</button></div>`;
+  return `<div class="card"><h2>¿Qué es?<span class="sp"></span><button class="btn sec sm" onclick="revisarFicha(D.almacen.find(x=>x.id==='${a.id}'),fichaAEdit(fichaDe(D.almacen.find(x=>x.id==='${a.id}'))))">Corregir</button></h2>
+    <p><b>${esc(f.tipo||'—')}</b>${f.ma?` · ${esc(f.ma)}`:''}${f.formulacion?` · ${esc(f.formulacion)}`:''}${f.estado?` · ${esc(f.estado)}`:''}</p>${f.para_que?`<p class="mut">${esc(f.para_que)}</p>`:''}
+    ${f.no_mezclar?.length?`<p><b class="neg">No mezclar con:</b> ${f.no_mezclar.map(esc).join(' · ')}</p>`:''}${f.precauciones?.length?`<p class="mut">${f.precauciones.map(esc).join('<br>')}</p>`:''}
+    <p class="mut" style="font-size:12px">${f.fabricante?esc(f.fabricante)+' · ':''}confirmado el ${fFecha(f.fecha)}${f.fuentes?.length?` · <a href="${esc(f.fuentes[0].url)}" target="_blank" rel="noopener">fuente</a>`:''} · <a href="#" onclick="event.preventDefault();identificarProducto('${a.id}')">volver a buscar</a></p></div>`; }
+const fichaAEdit=f=>f?{nombre_comercial:f.nombre_comercial,tipo:f.tipo,materias_activas:f.ma?[{nombre:f.ma}]:[],formulacion:f.formulacion,fabricante:f.fabricante,estado:f.estado,para_que:f.para_que,mezclas:{no_mezclar_con:f.no_mezclar,precauciones:f.precauciones},plazo_seguridad_dias:f.plazo,registro:f.registro,fuentes:f.fuentes}:{};
+// Lo que se sabe de un producto para mezclarlo: de su ficha o, si no la tiene, de su nombre
+function infoProd(nombre){ const a=buscaAlm(nombre), f=fichaDe(a), t=`${nombre} ${a?.nombre||''} ${f?.ma||''} ${f?.nombre_comercial||''} ${a?.notas||''}`.toLowerCase();
+  const form=(f?.formulacion||(/\b(WG|WP|WDG|DF|SG|SP|GR|SC|SL|EC|EW|SE|OD|CS)\b/.exec(`${nombre} ${a?.nombre||''}`)||[])[1]||'').toUpperCase();
+  const tipo=f?.tipo||'', c=new Set();
+  if(/cobre|cupr|oxicloruro|bordel|hidr[oó]xido de cu/.test(t)||(tipo==='fungicida'&&/cu\b/.test(t))) c.add('cobre');
+  if(/corrector de ph|acondicionador/.test(tipo)||/acidific|\bph\b|regulador de ph/.test(t)) c.add('acido');
+  if(/fosfit|fosfon|fosetil/.test(t)) c.add('fosfito');
+  if(tipo==='aceite'||/aceite|parafin/.test(t)) c.add('aceite');
+  if(/azufre/.test(t)) c.add('azufre');
+  if(/calcio|c[aá]lcic|nitrato c/.test(t)) c.add('calcio');
+  if(/fosfat|sulfat|p2o5/.test(t)) c.add('fosfsulf');
+  if(/deltametrin|lambda|cipermetrin|piretr/.test(t)) c.add('piretroide');
+  if(/amino/.test(t)||tipo==='bioestimulante') c.add('amino');
+  if(/mojante|adherente|tensioactiv/.test(tipo+' '+t)) c.add('mojante');
+  if(/abono foliar|corrector de carencias|bioestimulante/.test(tipo)||/foliar|potas|boro|8-4-40/.test(t)) c.add('foliar');
+  const estado=f?.estado||(udDeNombre(`${nombre} ${a?.notas||''}`)==='kg'?'sólido':udDeNombre(`${nombre} ${a?.notas||''}`)==='l'?'líquido':(a?.unidad==='kg'?'sólido':a?.unidad==='l'?'líquido':''));
+  return {nombre, a, f, form, tipo, c, estado}; }
+// Orden de echarlos a la cuba (de lo que más cuesta disolver a lo que menos) y lo que no conviene juntar. Orientativo: manda la etiqueta
+function analizarMezcla(nombres){ const P=nombres.filter(Boolean).map(infoProd), av=[], hay=k=>P.filter(p=>p.c.has(k));
+  const paso=p=>p.c.has('acido')?0:p.c.has('mojante')||p.c.has('aceite')?9:/^(SG|SP)$/.test(p.form)?1:p.form==='WP'?2:/^(WG|WDG|DF|GR)$/.test(p.form)?3:/^(SC|CS)$/.test(p.form)?4:/^(SE|EW|OD)$/.test(p.form)?5:p.form==='EC'?6:p.form==='SL'?7:p.c.has('foliar')?(p.estado==='sólido'?1:8):p.estado==='sólido'?3:7;
+  const cu=hay('cobre');
+  if(cu.length&&hay('acido').length) av.push({c:'bad',t:`<b>${hay('acido').map(p=>esc(p.nombre)).join(', ')}</b> baja el pH: con <b>${cu.map(p=>esc(p.nombre)).join(', ')}</b> el caldo ácido disuelve más cobre y puede quemar hoja y aceituna. No lo eches en esta cuba salvo que la etiqueta del cobre lo pida.`});
+  if(cu.length&&hay('fosfito').length) av.push({c:'bad',t:`Cobre con fosfitos o fosetil: riesgo de quemaduras (fitotoxicidad). Mejor en pases separados.`});
+  if(hay('aceite').length&&hay('azufre').length) av.push({c:'bad',t:`Aceite con azufre: quema. Deja al menos un mes entre uno y otro.`});
+  if(cu.length&&hay('aceite').length) av.push({c:'',t:`Cobre con aceite: puede dar quemaduras con calor. Mira las dos etiquetas.`});
+  if(hay('calcio').length&&hay('fosfsulf').some(p=>!hay('calcio').includes(p))) av.push({c:'',t:`El calcio con fosfatos o sulfatos puede cortar el caldo (precipita). Haz la prueba del bote.`});
+  if(cu.length&&hay('piretroide').length) av.push({c:'',t:`El caldo con cobre es alcalino y el piretroide pierde eficacia: échalo el último y cura en seguida, sin dejar la cuba parada.`});
+  if(cu.length&&hay('amino').length) av.push({c:'',t:`Los aminoácidos o bioestimulantes hacen que la hoja absorba más cobre: con hoja tierna o calor, puede quemar. Dosis bajas de cobre.`});
+  P.forEach(p=>{ (p.f?.no_mezclar||[]).forEach(nm=>{ const w=nm.toLowerCase(); P.filter(q=>q!==p).forEach(q=>{ const tq=`${q.nombre} ${q.tipo} ${q.f?.ma||''} ${[...q.c].join(' ')}`.toLowerCase(); if(w.split(/[\s,;/()]+/).filter(x=>x.length>=4&&!['productos','producto','base','otros','otras','tipo','como','mezcla','mezclas','caldo','sobre','todo','todos'].includes(x)).some(x=>tq.includes(x))) av.push({c:'bad',t:`La ficha de <b>${esc(p.nombre)}</b> dice que no se mezcle con «${esc(nm)}» y <b>${esc(q.nombre)}</b> lo es.`}); }); }); });
+  P.filter(p=>!p.f).forEach(p=>av.push({c:'mut',t:`<b>${esc(p.nombre)}</b> no está identificado: compruébalo en Almacén → ${esc(p.nombre)} → Identificar.`}));
+  const orden=P.map(p=>({...p,paso:paso(p)})).sort((x,y)=>x.paso-y.paso);
+  return {orden, av, P}; }
+function htmlMezcla(nombres){ const n=nombres.filter(Boolean); if(n.length<2) return ''; const {orden,av}=analizarMezcla(n);
+  const txtPaso=p=>p.paso===0?'primero, con la cuba a medias y el agitador en marcha':p.c.has('foliar')&&p.estado==='sólido'?'disuélvelo antes en un cubo de agua':p.paso<=3?'sólido: échalo poco a poco':p.paso===9?'al final':'';
+  return `<div class="aviso ${av.some(x=>x.c==='bad')?'bad':''}" style="margin:8px 0"><b>Orden para echarlos</b> <span class="mut">(cuba a ½–¾ de agua, agitador en marcha)</span><ol style="margin:4px 0 6px 18px;padding:0">${orden.map(p=>`<li>${esc(p.nombre)}${txtPaso(p)?` <span class="mut">· ${txtPaso(p)}</span>`:''}</li>`).join('')}</ol>
+    ${av.filter(x=>x.c!=='mut').map(x=>`<div class="${x.c==='bad'?'neg':''}" style="margin-top:4px">⚠️ ${x.t}</div>`).join('')}${av.filter(x=>x.c==='mut').map(x=>`<div class="mut" style="margin-top:4px">${x.t}</div>`).join('')}
+    <div class="mut" style="margin-top:6px">Si no lo tienes claro, haz la prueba del bote: mézclalos en un tarro en la misma proporción; si se corta, hace grumos o se calienta, no los juntes. Manda siempre la etiqueta.</div></div>`; }
 // Sólido o líquido por el nombre comercial: el tamaño («5 kg», «20 l») o el tipo de formulación de la etiqueta (WG, WP… sólidos; SC, SL, EC… líquidos)
 function udDeNombre(t){ t=` ${t||''} `;
   const m=/(\d+(?:[.,]\d+)?)\s*(kgs?|kilos?|gr?|lts?|litros?|l|ml|cc)\b/i.exec(t); if(m) return /^(k|g)/i.test(m[2])?'kg':'l';
@@ -3961,8 +4049,10 @@ function vAlmacen(){
   const grupos=TIPOS_ALM.map(t=>[t,act.filter(a=>(a.tipo||'Otro')===t)]).filter(g=>g[1].length);
   const est=a=>{ if(!a.caduca) return ''; const d=difDias(h,a.caduca); return ` · <span class="dot ${d<0?'r':d<=90?'a':'g'}"></span>${d<0?'caducado':'caduca'} ${fFecha(a.caduca)}`; };
   const env=envasesPendientes(), sinD=act.filter(a=>['Fitosanitario','Abono'].includes(a.tipo)&&!(a.dosis_cant&&a.dosis_cuba));
-  const eU=enUds();
-  return `${eU.length?`<div class="card"><h2>¿En litros o en kilos?</h2><p class="mut">${eU.map(a=>esc(a.nombre)).join(', ')} ${eU.length===1?'está':'están'} en «unidades»: dime cómo vienen y se descontarán solos al curar.</p><button class="btn sm" onclick="preguntarEnvase()">Decírselo</button></div>`:''}
+  const eU=enUds(), sinF=act.filter(a=>a.tipo!=='Otro'&&!fichaDe(a)), mzOps=act.filter(a=>a.tipo!=='Otro');
+  return `${sinF.length?`<div class="card"><h2>🔎 Sin identificar</h2><p class="mut">El técnico no sabe qué es ${sinF.length===1?'este producto':'cada uno'} más que por el nombre (por eso confundió el Azteca con un cobre). Búscalo y confírmalo:</p><div class="chips">${sinF.map(a=>`<button type="button" class="chip" onclick="identificarProducto('${a.id}')">${esc(a.nombre)}</button>`).join('')}</div></div>`:''}
+  ${mzOps.length>1?`<div class="card"><h2>¿Se pueden mezclar?</h2><p class="mut">Toca los que quieras echar juntos.</p><div class="chips" id="mzSel">${mzOps.map(a=>`<button type="button" class="chip" data-mz="${esc(a.nombre)}" onclick="this.classList.toggle('on');$('#mzRes').innerHTML=htmlMezcla([...document.querySelectorAll('#mzSel .chip.on')].map(b=>b.dataset.mz))||'<p class=&quot;mut&quot;>Elige al menos dos.</p>'">${esc(a.nombre)}</button>`).join('')}</div><div id="mzRes"></div></div>`:''}
+  ${eU.length?`<div class="card"><h2>¿En litros o en kilos?</h2><p class="mut">${eU.map(a=>esc(a.nombre)).join(', ')} ${eU.length===1?'está':'están'} en «unidades»: dime cómo vienen y se descontarán solos al curar.</p><button class="btn sm" onclick="preguntarEnvase()">Decírselo</button></div>`:''}
   ${sinD.length?`<div class="card"><h2>Te falta la dosis de ${sinD.length===1?'un producto':sinD.length+' productos'}</h2><p class="mut">Apunta lo que te dijeron en la cooperativa (p. ej. «4 kg en la cuba de 2.000»): al curar te calcula cuánto echar y el técnico lo tiene en cuenta.</p><div class="chips">${sinD.map(a=>`<button type="button" class="chip" data-ed="almacen:${a.id}" data-editar="1">${esc(a.nombre)}</button>`).join('')}</div></div>`:''}
   <div class="card"><h2>Almacén<span class="sp"></span><button class="btn sm" onclick="abrir('almacen')">+ Producto</button></h2>
     ${grupos.length?grupos.map(([t,l])=>`<div class="grp">${esc(t)}</div><table>${l.map(a=>`<tr class="click" data-ed="almacen:${a.id}"><td>${esc(a.nombre)}<div class="mut">${a.num_registro?'Reg. '+esc(a.num_registro):''}${a.dosis_cant&&a.dosis_cuba?`${a.num_registro?' · ':''}dosis ${num(a.dosis_cant)} ${esc(a.dosis_ud||'')} en ${num(a.dosis_cuba)} l`:a.tipo!=='Otro'?`${a.num_registro?' · ':''}<span style="color:var(--warn,#b26a00)">sin dosis</span>`:''}${est(a)}</div></td><td class="n ${a.cantidad!=null&&Number(a.cantidad)<=0?'neg':''}">${a.cantidad!=null?num(a.cantidad,2)+' '+(a.unidad==='ud'?'ud':a.unidad||''):'—'}</td></tr>`).join('')}</table>`).join(''):'<p class="mut">Apunta lo que tienes en la nave. Al apuntar una curación se descuenta solo si el nombre coincide.</p>'}</div>
