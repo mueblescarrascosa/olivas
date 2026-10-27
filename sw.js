@@ -1,6 +1,6 @@
 // Olivas · service worker: hace que la app abra sin cobertura y recibe las notificaciones.
 // Va junto a index.html en GitHub (misma carpeta). Si se cambia este archivo, sube el número de V.
-const V = 'olivas-3.40';
+const V = 'olivas-3.41';
 const BASE = ['./', './index.html', './manifest.webmanifest', './icono-192.png', './icono-512.png', './icono-badge.png'];
 const LIBS = /^https:\/\/(cdn\.jsdelivr\.net|unpkg\.com|cdnjs\.cloudflare\.com)\//;
 
@@ -8,7 +8,7 @@ self.addEventListener('install', e => {
   e.waitUntil(caches.open(V).then(c => Promise.all(BASE.map(u => c.add(u).catch(() => null)))).then(() => self.skipWaiting()));
 });
 self.addEventListener('activate', e => {
-  e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k.startsWith('olivas-') && k !== V).map(k => caches.delete(k)))).then(() => self.clients.claim()));
+  e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k.startsWith('olivas-') && k !== V && k !== 'olivas-compartido').map(k => caches.delete(k)))).then(() => self.clients.claim()));
 });
 
 // Compartir con Olivas desde WhatsApp (u otra app) un PDF o fotos: se guardan aquí y la app los abre al arrancar

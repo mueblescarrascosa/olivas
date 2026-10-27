@@ -183,7 +183,7 @@ details.adv{margin:4px 0 10px}details.adv summary{cursor:pointer;color:var(--olv
 
 <script>
 // ===== Configuración =====
-const VERSION = '3.40';
+const VERSION = '3.41';
 const VERSION_FECHA = '27 oct 2026';
 const CREDITOS = `Olivas v${VERSION} (${VERSION_FECHA}) · © 2026 Alfonso Carrascosa Martínez · Hecha con Claude (Anthropic)`;
 const SUPA_URL = 'https://kseyndjbmkaflpoqitsj.supabase.co';
@@ -3892,7 +3892,11 @@ function activarDosisAlm(){ const F=$('#frm'), box=$('#almDos'); if(!box) return
   $('#frM').onchange=()=>{ const v=pn($('#frM').value); if(v!=null&&v>=0&&v<10){ AJ.franja_m=v; guardarAjustes(true); } };
   const up=()=>{ const herb=F.tipo.value==='Herbicida'; $('#almFr').style.display=herb?'':'none'; const v=pn($('#frM').value); if(herb&&v!=null&&v>=0&&v<10) AJ.franja_m=v;
     const d=dosisTienda(pn(F.dosis_cant.value),F.dosis_ud.value,pn(F.dosis_cuba.value)); box.style.display=d?'':'none'; box.innerHTML=textoDosis(d,pn(F.etiqueta_dosis?.value),F.etiqueta_ud?.value,herb,pn(F.etiqueta_dosis_max?.value)); };
-  F.oninput=up; F.onchange=up; up(); }
+  F.oninput=up; F.onchange=up; up();
+  // al escribir el nombre de un producto nuevo, litros o kilos según el nombre («Nordox 75 WG» → kg), mientras no lo cambies tú
+  let tocada=false, auto=false; F.querySelectorAll('[data-chips=unidad] .chip,[data-chips=dosis_ud] .chip').forEach(b=>b.addEventListener('click',()=>{ if(!auto) tocada=true; }));
+  F.nombre?.addEventListener('input',()=>{ if(tocada||F.cantidad?.value||F.dosis_cant?.value) return; const u=udDeNombre(F.nombre.value); if(!u) return; auto=true;
+    F.querySelector(`[data-chips=unidad] .chip[data-val="${u}"]`)?.click(); F.querySelector(`[data-chips=dosis_ud] .chip[data-val="${u}"]`)?.click(); auto=false; }); }
 // Dosis para la cuba a partir del almacén (cc/100L o g/100L)
 function dosisDeAlm(nombre){ const a=buscaAlm(nombre); if(!a) return null;
   const d=dosisTienda(a.dosis_cant,a.dosis_ud,a.dosis_cuba); if(d) return {a, valor:Math.round(d.c100*1000*10)/10, unidad:d.solido?'g/100L':'cc/100L', de:'tienda'};
@@ -3903,16 +3907,44 @@ function tipoAlm(l){ const t=`${l.categoria} ${l.producto}`; return /abono/i.tes
 function cantLinea(l,ua){ const q=normU(l.cantidad,l.unidad); if(!q) return null; if(q.u!=='ud'&&(!ua||q.u===ua)) return q;
   const m=/(\d+(?:[.,]\d+)?)\s*(kgs?|gr?|lts?|litros?|l|ml|cc)\b/i.exec(`${l.producto||''} ${l.nombre_comun||''}`), t=m&&normU(pn(m[1]),m[2]);
   if(t&&t.u!=='ud'&&(!ua||t.u===ua)) return {n:Math.round(q.n*t.n*1000)/1000,u:t.u}; return ua&&ua!=='ud'?null:q; }
+// Sólido o líquido por el nombre comercial: el tamaño («5 kg», «20 l») o el tipo de formulación de la etiqueta (WG, WP… sólidos; SC, SL, EC… líquidos)
+function udDeNombre(t){ t=` ${t||''} `;
+  const m=/(\d+(?:[.,]\d+)?)\s*(kgs?|kilos?|gr?|lts?|litros?|l|ml|cc)\b/i.exec(t); if(m) return /^(k|g)/i.test(m[2])?'kg':'l';
+  if(/\b(WG|WP|WDG|DF|SG|SP|GR|DP|MG)\b|polvo|granulad|saco|cristal/i.test(t)) return 'kg';
+  if(/\b(SC|SL|EC|EW|SE|OD|CS|ME|LS|FS)\b|l[ií]quid|garrafa|bid[oó]n/i.test(t)) return 'l';
+  return null; }
+// Productos de campo que están en «unidades»: no se sabe si son litros o kilos ni cuánto lleva cada envase. Se pregunta una vez y se pasa a litros o kilos
+const enUds=()=>D.almacen.filter(a=>a.activo!==false&&(a.unidad||'ud')==='ud'&&a.tipo!=='Otro');
+function preguntarEnvase(lista){ lista=(lista||enUds()).filter(Boolean); if(!lista.length) return;
+  $('#frm').oninput=null; $('#frm').onchange=null;
+  $('#frm').innerHTML=`<h3>¿Cómo vienen?</h3><p class="mut">Están en «unidades» y así no se pueden descontar al curar. Dime cómo vienen y lo paso a litros o kilos.</p>
+    ${lista.map(a=>{ const u=udDeNombre(`${a.nombre} ${a.notas||''}`)||'l'; return `<div class="lab" data-env="${a.id}"><b>${esc(a.nombre)}</b> <span class="mut">· tienes ${num(a.cantidad||0)} ud</span>${a.notas?`<div class="mut">${esc(a.notas)}</div>`:''}
+      <div class="chips" data-chips="m_${a.id}" style="margin-bottom:6px"><button type="button" class="chip on" data-val="env">Son envases</button><button type="button" class="chip" data-val="ya">Ya son litros o kilos</button><button type="button" class="chip" data-val="ud">Son unidades sueltas</button></div><input type="hidden" name="m_${a.id}" value="env">
+      <div class="row" style="flex-wrap:nowrap" data-tam="${a.id}"><span class="mut">de</span><input name="t_${a.id}" inputmode="decimal" placeholder="5" style="width:70px"><div class="chips" data-chips="u_${a.id}" style="margin:0"><button type="button" class="chip ${u==='l'?'on':''}" data-val="l">litros</button><button type="button" class="chip ${u==='kg'?'on':''}" data-val="kg">kg</button></div><input type="hidden" name="u_${a.id}" value="${u}"></div></div>`; }).join('')}
+    <div class="row acciones" style="justify-content:flex-end"><button type="button" class="btn sec" onclick="$('#dlg').close()">Ahora no</button><button class="btn" id="fOk">Guardar</button></div>`;
+  const F=$('#frm'); activarChips(F);
+  const tog=()=>lista.forEach(a=>{ F.querySelector(`[data-tam="${a.id}"]`).classList.toggle('hidden',F[`m_${a.id}`].value==='ud'); const t=F.querySelector(`[name="t_${a.id}"]`); t.style.display=F[`m_${a.id}`].value==='env'?'':'none'; t.previousElementSibling.style.display=t.style.display; }); F.onchange=tog; tog();
+  F.onsubmit=async e=>{ e.preventDefault(); const L=[];
+    for(const a of lista){ const m=F[`m_${a.id}`].value, u=F[`u_${a.id}`].value, t=pn(F[`t_${a.id}`].value); if(m==='ud') continue;
+      if(m==='env'&&!(t>0)){ toast(`Pon de cuánto es cada envase de ${a.nombre}`); return; }
+      L.push({a, cantidad:m==='env'?Math.round(Number(a.cantidad||0)*t*1000)/1000:Number(a.cantidad||0), unidad:u, nota:m==='env'?`Envases de ${num(t)} ${u==='l'?'l':'kg'}`:null}); }
+    if(!L.length){ $('#dlg').close(); return; } $('#fOk').disabled=true;
+    const res=await Promise.all(L.map(x=>sb.from('olv_almacen').update({cantidad:x.cantidad,unidad:x.unidad,...(x.nota&&!(x.a.notas||'').includes(x.nota)?{notas:[x.a.notas,x.nota].filter(Boolean).join(' · ')}:{})}).eq('id',x.a.id))), mal=res.find(r=>r.error);
+    $('#dlg').close(); await cargar('almacen',L.map(x=>x.a.id)); render();
+    if(mal){ if(!sinRed(mal.error)) toast('Error: '+mal.error.message); return; }
+    toast(L.map(x=>`${x.a.nombre}: ${num(x.cantidad)} ${x.unidad}`).join(' · ')); };
+  $('#dlg').showModal(); }
 // Mete líneas de factura en el almacén. Las que no se sabe cuánto son (sacos sin tamaño, unidades distintas) se dejan para hacerlas a mano
-async function lineasAlAlmacen(ids){ let n=0; const dudas=[];
+async function lineasAlAlmacen(ids){ let n=0; const dudas=[], nuevosUd=[];
   for(const id of ids){ const l=D.factura_lineas.find(x=>x.id===id); if(!l) continue;
     const nom=l.nombre_comun||l.producto, a=buscaAlm(nom), q=cantLinea(l,a?(a.unidad||'l'):null); let r;
     if(a&&q){ const c=Math.round((Number(a.cantidad||0)+q.n)*1000)/1000; r=await sb.from('olv_almacen').update({cantidad:c}).eq('id',a.id); if(!r.error) a.cantidad=c; }
     else if(a){ dudas.push(nom); continue; }
-    else { const q2=q||{n:null,u:'ud'}; r=await insertar('almacen',{nombre:nom,tipo:tipoAlm(l),cantidad:q2.n,unidad:q2.u,activo:true}); if(!r.error&&r.filas?.[0]) D.almacen.push(r.filas[0]); }
+    else { const q2=q||{n:null,u:'ud'}; r=await insertar('almacen',{nombre:nom,tipo:tipoAlm(l),cantidad:q2.n,unidad:q2.u,activo:true}); if(!r.error&&r.filas?.[0]){ D.almacen.push(r.filas[0]); if(q2.u==='ud') nuevosUd.push(r.filas[0].id); } }
     if(!r.error){ n++; AJ.alm_lineas=[...(AJ.alm_lineas||[]),id]; } }
   if(n){ await guardarAjustes(true); await cargar('almacen'); }
   if(dudas.length) setTimeout(()=>toast(`No sé cuánto meter de ${dudas.join(', ')} (unidades distintas): súmalo a mano en el almacén`),2600);
+  else if(nuevosUd.length) setTimeout(()=>toast(`No sé si ${nuevosUd.length===1?'un producto viene':nuevosUd.length+' productos vienen'} en litros o kilos`,()=>preguntarEnvase(nuevosUd.map(id=>D.almacen.find(a=>a.id===id))),'Decírselo'),2600);
   return n; }
 async function lineaAlAlmacen(id){
   const l=D.factura_lineas.find(x=>x.id===id); if(!l) return;
@@ -3929,7 +3961,9 @@ function vAlmacen(){
   const grupos=TIPOS_ALM.map(t=>[t,act.filter(a=>(a.tipo||'Otro')===t)]).filter(g=>g[1].length);
   const est=a=>{ if(!a.caduca) return ''; const d=difDias(h,a.caduca); return ` · <span class="dot ${d<0?'r':d<=90?'a':'g'}"></span>${d<0?'caducado':'caduca'} ${fFecha(a.caduca)}`; };
   const env=envasesPendientes(), sinD=act.filter(a=>['Fitosanitario','Abono'].includes(a.tipo)&&!(a.dosis_cant&&a.dosis_cuba));
-  return `${sinD.length?`<div class="card"><h2>Te falta la dosis de ${sinD.length===1?'un producto':sinD.length+' productos'}</h2><p class="mut">Apunta lo que te dijeron en la cooperativa (p. ej. «4 kg en la cuba de 2.000»): al curar te calcula cuánto echar y el técnico lo tiene en cuenta.</p><div class="chips">${sinD.map(a=>`<button type="button" class="chip" data-ed="almacen:${a.id}" data-editar="1">${esc(a.nombre)}</button>`).join('')}</div></div>`:''}
+  const eU=enUds();
+  return `${eU.length?`<div class="card"><h2>¿En litros o en kilos?</h2><p class="mut">${eU.map(a=>esc(a.nombre)).join(', ')} ${eU.length===1?'está':'están'} en «unidades»: dime cómo vienen y se descontarán solos al curar.</p><button class="btn sm" onclick="preguntarEnvase()">Decírselo</button></div>`:''}
+  ${sinD.length?`<div class="card"><h2>Te falta la dosis de ${sinD.length===1?'un producto':sinD.length+' productos'}</h2><p class="mut">Apunta lo que te dijeron en la cooperativa (p. ej. «4 kg en la cuba de 2.000»): al curar te calcula cuánto echar y el técnico lo tiene en cuenta.</p><div class="chips">${sinD.map(a=>`<button type="button" class="chip" data-ed="almacen:${a.id}" data-editar="1">${esc(a.nombre)}</button>`).join('')}</div></div>`:''}
   <div class="card"><h2>Almacén<span class="sp"></span><button class="btn sm" onclick="abrir('almacen')">+ Producto</button></h2>
     ${grupos.length?grupos.map(([t,l])=>`<div class="grp">${esc(t)}</div><table>${l.map(a=>`<tr class="click" data-ed="almacen:${a.id}"><td>${esc(a.nombre)}<div class="mut">${a.num_registro?'Reg. '+esc(a.num_registro):''}${a.dosis_cant&&a.dosis_cuba?`${a.num_registro?' · ':''}dosis ${num(a.dosis_cant)} ${esc(a.dosis_ud||'')} en ${num(a.dosis_cuba)} l`:a.tipo!=='Otro'?`${a.num_registro?' · ':''}<span style="color:var(--warn,#b26a00)">sin dosis</span>`:''}${est(a)}</div></td><td class="n ${a.cantidad!=null&&Number(a.cantidad)<=0?'neg':''}">${a.cantidad!=null?num(a.cantidad,2)+' '+(a.unidad==='ud'?'ud':a.unidad||''):'—'}</td></tr>`).join('')}</table>`).join(''):'<p class="mut">Apunta lo que tienes en la nave. Al apuntar una curación se descuenta solo si el nombre coincide.</p>'}</div>
     ${lin.length?`<div class="card"><h2>De tus facturas</h2><p class="mut">Toca una línea para meterla en el almacén.</p><table>${lin.map(l=>`<tr class="click" onclick="lineaAlAlmacen('${l.id}')"><td>${esc(l.nombre_comun||l.producto)}<div class="mut">${esc(l.categoria||'')}</div></td><td class="n">${l.cantidad!=null?num(l.cantidad,2)+' '+esc(l.unidad||''):''}</td></tr>`).join('')}</table></div>`:''}
