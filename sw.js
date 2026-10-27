@@ -1,6 +1,6 @@
 // Olivas · service worker: hace que la app abra sin cobertura y recibe las notificaciones.
 // Va junto a index.html en GitHub (misma carpeta). Si se cambia este archivo, sube el número de V.
-const V = 'olivas-3.44';
+const V = 'olivas-3.45';
 const BASE = ['./', './index.html', './manifest.webmanifest', './icono-192.png', './icono-512.png', './icono-badge.png'];
 const LIBS = /^https:\/\/(cdn\.jsdelivr\.net|unpkg\.com|cdnjs\.cloudflare\.com)\//;
 
