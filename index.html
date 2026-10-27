@@ -183,7 +183,7 @@ details.adv{margin:4px 0 10px}details.adv summary{cursor:pointer;color:var(--olv
 
 <script>
 // ===== Configuración =====
-const VERSION = '3.47';
+const VERSION = '3.48';
 const VERSION_FECHA = '27 oct 2026';
 const CREDITOS = `Olivas v${VERSION} (${VERSION_FECHA}) · © 2026 Alfonso Carrascosa Martínez · Hecha con Claude (Anthropic)`;
 const SUPA_URL = 'https://kseyndjbmkaflpoqitsj.supabase.co';
@@ -528,6 +528,7 @@ const S = {
     {k:'finca_id',l:'Finca (si va de una)',t:'chips',ops:opsFincas(),adv:1},
     {k:'hecha',l:'Ya pasó / hecha',t:'bool',adv:1}]},
   almacen:{tit:'Producto del almacén', f:()=>[
+    {k:'_ia',t:'html',html:'<button type="button" class="btn sec" id="almIA" style="width:100%;margin-bottom:6px">📷 Leer la etiqueta con IA</button><div id="almIAmsg" class="mut" style="margin:-2px 0 8px"></div>'},
     {k:'nombre',l:'Producto',req:1,focus:1},
     {k:'tipo',l:'Tipo',t:'chips',ops:TIPOS_ALM.map(x=>[x,x]),def:'Fitosanitario'},
     {k:'cantidad',l:'Cantidad que tienes',t:'num'},
@@ -699,7 +700,7 @@ function abrir(k, reg=null, ini=null){
   if($('#fOtro')) $('#fOtro').onclick = ()=>guardar(k, null, true);
   $('#frm').onsubmit = e => { e.preventDefault(); guardar(k, reg); };
   // comportamientos especiales
-  if(k==='almacen') activarDosisAlm();
+  if(k==='almacen'){ activarDosisAlm(); if($('#almIA')) $('#almIA').onclick=leerEtiqueta; }
   if(k==='maquinas'&&!reg){ document.querySelectorAll('#mqN .chip').forEach(b=>b.onclick=()=>{ document.querySelectorAll('#mqN .chip').forEach(x=>x.classList.toggle('on',x===b)); $('#mqNx').value=''; }); $('#mqNx').oninput=()=>document.querySelectorAll('#mqN .chip').forEach(x=>x.classList.remove('on')); }
   if(k==='maquinas') fotosMaq(reg);
   if(k==='maquinas'){
@@ -3988,6 +3989,51 @@ function cantLinea(l,ua){ const q=normU(l.cantidad,l.unidad); if(!q) return null
 // La ficha va en la columna «ficha» del almacén (las de antes de la 3.44 se guardaban en los ajustes, AJ.fichas, y se siguen leyendo)
 const TIPOS_PROD=['fungicida','insecticida','herbicida','abono foliar','abono al suelo','corrector de carencias','bioestimulante','corrector de pH / acondicionador del agua','mojante / adherente','aceite','otro'];
 const fichaDe=a=>a?(a.ficha||(AJ.fichas||{})[a.id]||null):null;
+// Foto de la etiqueta (delante, detrás…) → la IA lee el producto y rellena el formulario del almacén.
+// Solo rellena lo que lee y no pisa lo que ya hayas escrito (salvo el nombre si estaba vacío).
+function leerEtiqueta(){
+  if(!navigator.onLine){ toast('Para leer la etiqueta necesitas cobertura'); return; }
+  const i=document.createElement('input'); i.type='file'; i.accept='image/*'; i.multiple=true;
+  i.onchange=async()=>{ const fs=[...i.files].slice(0,4); if(!fs.length) return;
+    const msg=$('#almIAmsg'), btn=$('#almIA'); btn.disabled=true; msg.className='mut'; msg.textContent=`Leyendo ${fs.length>1?fs.length+' fotos':'la etiqueta'}… (10-30 segundos)`;
+    try{
+      const arch=await Promise.all(fs.map(prepararArchivo)), datos=await Promise.all(arch.map(a=>aB64(a.blob)));
+      const {data:res,error}=await sb.functions.invoke('leer-factura',{body:{data:datos[0],mime:arch[0].mime,extra:datos.slice(1).map((d,k)=>({data:d,mime:arch[k+1].mime})),tipo:'etiqueta'}});
+      if(error){ let m=error.message; try{ const j=await error.context.json(); m=j.error||m; }catch(e){} throw new Error(m); }
+      if(!res?.datos) throw new Error(res?.error||'No se pudo leer');
+      rellenarConEtiqueta(res.datos);
+    }catch(e){ msg.className='neg'; msg.textContent='No se pudo leer: '+e.message+'. Prueba con otra foto, de cerca y con luz.'; }
+    btn.disabled=false; };
+  i.click();
+}
+function rellenarConEtiqueta(d){
+  const F=$('#frm'), msg=$('#almIAmsg'), hecho=[];
+  const campo=n=>F.querySelector(`[name="${n}"]`);
+  const pon=(n,v,etq,pisar)=>{ const el=campo(n); if(!el||v==null||v==='') return; if(el.value&&!pisar) return; el.value=v; el.dispatchEvent(new Event('input',{bubbles:true})); hecho.push(etq); };
+  const chip=(n,v,etq)=>{ const b=F.querySelector(`[data-chips="${n}"] .chip[data-val="${v}"]`); if(b){ b.click(); hecho.push(etq); } };
+  pon('nombre',d.nombre_comercial,'nombre');
+  if(TIPOS_ALM.includes(d.tipo)) chip('tipo',d.tipo,'tipo');
+  // Envase: litros o kilos (ml y g se pasan a l y kg)
+  let c=n2(d.contenido), u=(d.contenido_ud||'').toLowerCase();
+  if(c!=null&&u==='ml'){ c=c/1000; u='l'; } if(c!=null&&u==='g'){ c=c/1000; u='kg'; }
+  if(!['l','kg'].includes(u)) u=d.estado==='solido'?'kg':d.estado==='liquido'?'l':'';
+  if(u) chip('unidad',u,'unidad');
+  if(c!=null) pon('cantidad',c,`cantidad (${num(c)} ${u==='l'?'l':u}, un envase)`);
+  pon('caduca',d.caduca,'caducidad');
+  pon('num_registro',d.num_registro,'nº de registro');
+  const ds=d.dosis_olivo||{};
+  if(n2(ds.min)!=null){ pon('etiqueta_dosis',n2(ds.min),'dosis de la etiqueta'); if(n2(ds.max)!=null) pon('etiqueta_dosis_max',n2(ds.max),'dosis máxima');
+    if(['cc/100L','g/100L','%','l/ha','kg/ha'].includes(ds.ud)) chip('etiqueta_ud',ds.ud,'unidad de la dosis'); }
+  // Lo demás va a las notas (se añade, no se borra lo que hubiera)
+  const ma=(d.materias_activas||[]).map(m=>[m.nombre,m.riqueza].filter(Boolean).join(' ')).filter(Boolean).join(', ');
+  const L=[ma&&'Materia activa: '+ma+(d.formulacion?' ('+d.formulacion+')':''), d.usos_olivo&&'En olivo: '+d.usos_olivo, ds.texto&&'Dosis en la etiqueta: '+ds.texto,
+    n2(d.plazo_seguridad_dias)!=null&&'Plazo de seguridad: '+n2(d.plazo_seguridad_dias)+' días', d.plazo_reentrada&&'Reentrada: '+d.plazo_reentrada,
+    d.precauciones&&'Precauciones: '+d.precauciones, d.fabricante&&'Fabricante: '+d.fabricante, d.lote&&'Lote: '+d.lote].filter(Boolean);
+  const no=campo('notas'); if(no&&L.length){ const ya=no.value.trim(); no.value=(ya?ya+'\n':'')+L.join('\n'); hecho.push('notas'); }
+  const adv=F.querySelector('details.adv'); if(adv) adv.open=true;
+  msg.className=hecho.length?'aviso ok':'neg';
+  msg.textContent=hecho.length?'✅ Leído: '+[...new Set(hecho)].join(', ')+'. Revísalo antes de guardar.':'No he sacado nada claro de la foto. Prueba con otra, de cerca y con luz.';
+}
 async function identificarProducto(aid){ const a=D.almacen.find(x=>x.id===aid); if(!a) return;
   if(!navigator.onLine){ toast('Para identificar un producto necesitas cobertura'); return; }
   $('#frm').oninput=null; $('#frm').onchange=null; $('#frm').onsubmit=e=>e.preventDefault();
