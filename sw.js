@@ -1,6 +1,6 @@
 // Olivas · service worker: hace que la app abra sin cobertura y recibe las notificaciones.
 // Va junto a index.html en GitHub (misma carpeta). Si se cambia este archivo, sube el número de V.
-const V = 'olivas-3.39';
+const V = 'olivas-3.40';
 const BASE = ['./', './index.html', './manifest.webmanifest', './icono-192.png', './icono-512.png', './icono-badge.png'];
 const LIBS = /^https:\/\/(cdn\.jsdelivr\.net|unpkg\.com|cdnjs\.cloudflare\.com)\//;
 
@@ -11,9 +11,23 @@ self.addEventListener('activate', e => {
   e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k.startsWith('olivas-') && k !== V).map(k => caches.delete(k)))).then(() => self.clients.claim()));
 });
 
+// Compartir con Olivas desde WhatsApp (u otra app) un PDF o fotos: se guardan aquí y la app los abre al arrancar
+const COMPARTIDO = 'olivas-compartido';
 self.addEventListener('fetch', e => {
-  const r = e.request; if (r.method !== 'GET') return;
-  const u = new URL(r.url);
+  const r = e.request, u = new URL(r.url);
+  if (r.method === 'POST' && u.origin === location.origin && /\/compartir$/.test(u.pathname)) {
+    e.respondWith((async () => {
+      let n = 0;
+      try {
+        const fd = await r.formData(), fs = fd.getAll('archivos').filter(f => f && f.size);
+        await caches.delete(COMPARTIDO); const c = await caches.open(COMPARTIDO);
+        for (const f of fs.slice(0, 8)) await c.put(`./compartido/${n++}`, new Response(f, { headers: { 'content-type': f.type || 'application/octet-stream', 'x-nombre': encodeURIComponent(f.name || 'archivo') } }));
+      } catch (_) {}
+      return Response.redirect(new URL(`./?compartido=${n}`, self.registration.scope).href, 303);
+    })());
+    return;
+  }
+  if (r.method !== 'GET') return;
   // La página: primero la red (así siempre es la última versión); sin cobertura, la que había guardada
   if (r.mode === 'navigate' || (u.origin === location.origin && /\/(index\.html)?$/.test(u.pathname))) {
     e.respondWith(fetch(r).then(res => { if (res.ok) { const cp = res.clone(); caches.open(V).then(c => c.put('./index.html', cp)); } return res; })

@@ -183,7 +183,7 @@ details.adv{margin:4px 0 10px}details.adv summary{cursor:pointer;color:var(--olv
 
 <script>
 // ===== Configuración =====
-const VERSION = '3.39';
+const VERSION = '3.40';
 const VERSION_FECHA = '27 oct 2026';
 const CREDITOS = `Olivas v${VERSION} (${VERSION_FECHA}) · © 2026 Alfonso Carrascosa Martínez · Hecha con Claude (Anthropic)`;
 const SUPA_URL = 'https://kseyndjbmkaflpoqitsj.supabase.co';
@@ -278,6 +278,7 @@ async function entrar(){
   await cargarTodo(); $('#sync')?.classList.add('hidden');
   if(pintado) render(); else ir('inicio');
   if(/^#(tiempo|raif|avisos)$/.test(location.hash)){ const h=location.hash; try{ history.replaceState(null,'',location.pathname); }catch(e){} setTimeout(()=>irAviso(h),300); }
+  if(/[?&]compartido=/.test(location.search)) setTimeout(procesarCompartido,300);
   vaciarCola().then(aplicarAlmPend).then(subirFotosPend);
   buscarVersion(); document.addEventListener('visibilitychange',()=>{ if(!document.hidden){ buscarVersion(); vaciarCola(); } });
 }
@@ -287,6 +288,20 @@ async function buscarVersion(){ if(VER_AVISADA||!navigator.onLine||!/^https?:/.t
   try{ const r=await fetch(location.pathname+'?v='+Date.now(),{cache:'no-store'}); if(!r.ok) return; const t=await r.text(); const m=/const VERSION = '([^']+)'/.exec(t);
     if(m&&m[1]!==VERSION){ VER_AVISADA=true; const b=document.createElement('div'); b.className='aviso ok'; b.style.cssText='position:fixed;left:12px;right:12px;bottom:calc(74px + env(safe-area-inset-bottom));z-index:50;display:flex;gap:10px;align-items:center;box-shadow:var(--sh)';
       b.innerHTML=`<span style="flex:1">Hay una versión nueva de Olivas (v${esc(m[1])}).</span><button class="btn sm" onclick="location.replace(location.pathname+'?v='+Date.now())">Actualizar</button>`; document.body.appendChild(b); } }catch(e){} }
+// Lo compartido con Olivas desde WhatsApp (el PDF de la cooperativa, una factura, unas fotos…): se pregunta qué es y se lee
+async function procesarCompartido(){ try{ history.replaceState(null,'',location.pathname); }catch(e){}
+  let files=[]; try{ const c=await caches.open('olivas-compartido'); for(const k of await c.keys()){ const r=await c.match(k); const b=await r.blob(); files.push(new File([b],decodeURIComponent(r.headers.get('x-nombre')||'archivo'),{type:b.type||r.headers.get('content-type')||''})); } await caches.delete('olivas-compartido'); }catch(e){}
+  files=files.filter(f=>/^image\/|application\/pdf/.test(f.type)||/\.(pdf|jpe?g|png|webp)$/i.test(f.name)).map(f=>f.type?f:new File([f],f.name,{type:/\.pdf$/i.test(f.name)?'application/pdf':'image/jpeg'}));
+  if(!files.length){ toast('No ha llegado ningún PDF ni foto. Comparte el archivo, no el enlace'); return; }
+  if(!navigator.onLine){ toast('Para leer lo compartido necesitas cobertura'); return; }
+  $('#frm').oninput=null; $('#frm').onchange=null; $('#frm').onsubmit=e=>e.preventDefault();
+  $('#frm').innerHTML=`<h3>¿Qué es lo que has compartido?</h3><p class="mut">${files.length===1?esc(files[0].name):files.length+' archivos'}</p>
+    <div style="display:grid;gap:8px">${[['rec','📋 Recomendación o circular de la cooperativa'],['fac','📄 Factura o ticket de compra'],['liq','🧾 Liquidación o tickets de entrega'],['foliar','🍃 Análisis foliar'],['suelo','🟫 Análisis de suelo']].map(([k,t])=>`<button type="button" class="btn ${k==='rec'?'':'sec'}" data-comp="${k}">${t}</button>`).join('')}</div>
+    <div class="row acciones" style="justify-content:flex-end"><button type="button" class="btn sec" onclick="$('#dlg').close()">Cancelar</button></div>`;
+  $('#frm').querySelectorAll('[data-comp]').forEach(b=>b.onclick=()=>{ const k=b.dataset.comp;
+    if(k==='rec') leerRec(files); else if(k==='fac') leerFactura(files[0]); else if(k==='liq') leerLiq(files[0]); else leerAnalisis(files[0],k);
+    if(k!=='rec'&&files.length>1) setTimeout(()=>toast('Solo se lee el primero; los demás, compártelos de uno en uno'),1500); });
+  $('#dlg').showModal(); }
 async function salir(){
   if(COLA.length && !confirm('Hay apuntes sin subir que se perderán si cierras sesión. ¿Cerrar igualmente?')) return;
   try{ localStorage.removeItem('olv_cache'); localStorage.removeItem('olv_cola'); }catch(e){}
@@ -524,7 +539,8 @@ const S = {
     {k:'dosis_cuba',l:'En una cuba de (litros)',t:'num',def:()=>atomizadores().find(m=>m.capacidad_l>0)?.capacidad_l||''},
     {k:'_dr',t:'html',html:'<div id="almDos" class="aviso ok" style="display:none"></div>'},
     {k:'_fr',t:'html',html:'<label id="almFr" style="display:none">Franja sin tratar en el centro de la calle (m)<input id="frM" inputmode="decimal"></label>'},
-    {k:'etiqueta_dosis',l:'Dosis de la etiqueta (si la miras)',t:'num',adv:1},
+    {k:'_et',t:'html',adv:1,html:'<span class="clab">Dosis de la etiqueta (si la miras). Suele ser un margen: pon el mínimo y el máximo; si es una sola, déjala en «desde».</span>'},
+    {k:'etiqueta_dosis',l:'Desde',t:'num',adv:1,grp:'et'},{k:'etiqueta_dosis_max',l:'Hasta (máximo)',t:'num',adv:1,grp:'et'},
     {k:'etiqueta_ud',l:'',t:'chips',ops:[['cc/100L','cc/100 l'],['g/100L','g/100 l'],['%','%'],['l/ha','l/ha'],['kg/ha','kg/ha']],def:'cc/100L',adv:1},
     {k:'_dl',t:'html',adv:1,html:'<p class="mut" style="margin-top:-4px">La etiqueta oficial está en el <a href="https://servicio.mapa.gob.es/regfiweb" target="_blank" rel="noopener">Registro de Productos Fitosanitarios (MAPA)</a>: busca por nombre o nº de registro y mira la dosis para olivo.</p>'},
     {k:'num_registro',l:'Nº de registro',adv:1},{k:'notas',l:'Notas',t:'area',adv:1},{k:'activo',l:'Lo sigo teniendo',t:'bool',def:true,adv:1}]},
@@ -1079,6 +1095,10 @@ function avisos(){
   // plazo de seguridad: un aviso por finca, con el día más tardío
   { const porF={}; D.tratamientos.forEach(t=>{ if(!t.plazo_seguridad_dias) return; const fin=addDias(t.fecha,t.plazo_seguridad_dias); if(difDias(h,fin)<=0||t.fecha>h) return; const x=porF[t.finca_id||'']=porF[t.finca_id||'']||{fin,prod:new Set()}; if(fin>x.fin) x.fin=fin; x.prod.add(t.producto); });
     Object.entries(porF).forEach(([fid,x])=>out.push({c:'bad',t:`No recoger en <b>${esc(fincaNom(fid||null))}</b> antes del ${fFecha(x.fin)} (plazo de seguridad de ${[...x.prod].map(esc).join(', ')})`,ord:-100})); }
+  // recogida parada: el día de vuelta, si ya está cerca, o si un plazo de seguridad no deja recoger ese día
+  D.fincas.filter(f=>f.activa).forEach(f=>{ const e=recogidaDe(f.id).est; if(e?.estado!=='parada'||!e.hasta) return; const d=difDias(h,e.hasta), p=plazoSeg(f.id,e.hasta);
+    if(p) out.push({c:'bad',t:`En <b>${esc(f.nombre)}</b> vuelves a recoger el ${fFecha(e.hasta)}, pero por el plazo de seguridad de ${p.prod.map(esc).join(', ')} no se puede hasta el ${fFecha(p.fin)}`,ord:-90,fn:`verFinca('${f.id}')`});
+    else if(d>=0&&d<=7) out.push({c:'',t:`${d===0?'Hoy':d===1?'Mañana':'El '+diaSemana(e.hasta)} vuelves a recoger en <b>${esc(f.nombre)}</b>${e.notas?' · '+esc(e.notas):''}`,ord:d,fn:`verFinca('${f.id}')`}); });
   D.riego_pagos.filter(r=>!r.pagado&&r.vencimiento).forEach(r=>{ const d=difDias(h,r.vencimiento);
     if(d<0) out.push({c:'bad',t:`Recibo de riego vencido: <b>${esc(r.concepto)} ${esc(comNom(r.comunidad_id))}</b> ${eur(r.importe)} (venció el ${fFecha(r.vencimiento)})`,ord:d,riego:1});
     else if(d<=u.itv_dias) out.push({c:d<=7?'bad':'',t:`Riego: <b>${esc(r.concepto)} ${esc(comNom(r.comunidad_id))}</b> ${eur(r.importe)} vence el ${fFecha(r.vencimiento)}`,ord:d,riego:1}); });
@@ -1729,10 +1749,11 @@ function vRiego(){
 // tipo: 'olivo' (hace falta el olivo seco) · 'spray' (ventana para curar) · 'antes_lluvia' (mejor justo antes de llover)
 const LABORES = [
   {id:'revisar_recogida', nombre:'Preparar la recogida: vibrador, mantos, remolque', meses:[10,11], fam:'prep_recogida', global:1},
-  {id:'desbrozar_otono', nombre:'Desbrozar antes de la recogida', meses:[9,10], fam:'desbrozar', tipo:'olivo'},
-  {id:'soplar', nombre:'Soplar y limpiar los ruedos', meses:[10,11], fam:'soplar', tipo:'olivo'},
-  {id:'cobre_otono', nombre:'Curar con cobre de otoño (repilo)', meses:[9,10,11], fam:'cobre', tipo:'spray', info:'Mejor antes de las lluvias. En Sierra de Segura el repilo salió de los más altos de Jaén en 2025 (RAIF): vigila umbrías y fincas junto a arroyos.'},
-  {id:'foliar_otono', nombre:'Abono foliar de otoño (potasio, engorde)', meses:[9,10], fam:'foliar', tipo:'spray'},
+  // antesRec: solo en las fincas donde aún no se ha empezado a recoger (después ya no tiene sentido; tras recoger toca el cobre de las heridas)
+  {id:'desbrozar_otono', nombre:'Desbrozar antes de la recogida', meses:[9,10], fam:'desbrozar', tipo:'olivo', antesRec:1},
+  {id:'soplar', nombre:'Soplar y limpiar los ruedos', meses:[10,11], fam:'soplar', tipo:'olivo', antesRec:1},
+  {id:'cobre_otono', nombre:'Curar con cobre de otoño (repilo)', meses:[9,10,11], fam:'cobre', tipo:'spray', antesRec:1, info:'Mejor antes de las lluvias. En Sierra de Segura el repilo salió de los más altos de Jaén en 2025 (RAIF): vigila umbrías y fincas junto a arroyos.'},
+  {id:'foliar_otono', nombre:'Abono foliar de otoño (potasio, engorde)', meses:[9,10], fam:'foliar', tipo:'spray', antesRec:1},
   {id:'herbicida_otono', nombre:'Tratamiento de suelo de otoño', meses:[10,11,12], fam:'herbicida', tipo:'spray', info:'Tras las primeras lluvias. Desactívalo en Ajustes si llevas cubierta.'},
   {id:'recogida', nombre:'Recoger la aceituna', meses:[11,12,1,2], fam:'recogida', tipo:'olivo', info:'Al apuntar jornadas con la faena «Recogida» se da por empezada.'},
   {id:'cobre_postrec', nombre:'Cobre después de recoger (heridas del vareo)', tras:{fam:'recogida',de:5,a:25,fin:1}, fam:'cobre', tipo:'spray', info:'Protege las heridas de la recogida del repilo y la tuberculosis.'},
@@ -1808,7 +1829,7 @@ function pendientesLaboresCalc(){
         if(d>=45 && !parado(L,f.id)) out.push({L,f,toca:1,resta:null,txt:u?`hace ${d} días que no apuntas nada`:'aún no has apuntado nada'}); });
       return;
     }
-    const lista = L.global ? [null] : fincas.filter(f=>!L.riego||f.riego);
+    const lista = L.global ? [null] : fincas.filter(f=>(!L.riego||f.riego)&&!(L.antesRec&&recogidaDe(f.id).estado!=='sin empezar'));
     lista.forEach(f=>{
       const fid=f?f.id:null; if(parado(L,fid)) return;
       let desde=null, resta=null, toca=false, pronto=null;
@@ -1874,13 +1895,19 @@ function recogidaDe(fid){ const [ini,fin]=campRango(CAMP), h=hoy();
   const dias=[...new Set([...D.pesadas.filter(enF).map(p=>p.fecha),...D.jornales.filter(j=>enF(j)&&esRecAce(j.tarea)).map(j=>j.fecha)])].sort(), ult=dias[dias.length-1]||null;
   const e=est&&!(ult&&ult>est.fecha)?est:null;
   return {est:e, dias, ult, estado:e?(e.estado==='hecha'?'terminada':'parada'):dias.length?'en marcha':'sin empezar'}; }
+const estadoRecIco=fid=>({'terminada':'✅','parada':'⏸️','en marcha':'🫒','sin empezar':'⚪'})[recogidaDe(fid).estado];
+// Lo que esperabas según el último aforo de la campaña y lo que llevas
+function aforoDe(fid){ const [ini]=campRango(CAMP), a=muestras('aforo',fid).filter(m=>m.fecha>=addDias(ini,-60)).pop(); const est=Number(a?.datos?.estimado)||0; if(!est) return null;
+  const real=cosecha(CAMP).porF[fid]?.kilos||0; return {est, real, pct:real/est, falta:Math.max(0,est-real), fecha:a.fecha}; }
 function txtRecogida(fid){ const R=recogidaDe(fid), e=R.est;
   if(R.estado==='terminada') return `recogida terminada el ${fFecha(e.fecha)}`;
   if(R.estado==='parada') return `recogida parada${e.hasta?' hasta el '+fFecha(e.hasta):''}${e.notas?' · '+esc(e.notas):''}`;
   if(R.estado==='en marcha') return `recogiendo (último día ${fFecha(R.ult)})`;
   return 'sin empezar a recoger'; }
 function htmlRecogidaFinca(f){ const R=recogidaDe(f.id); if(R.estado==='sin empezar') return '';
-  return `<div class="card"><h2>Recogida ${esc(CAMP)}</h2><p>${txtRecogida(f.id)}${R.dias.length?` <span class="mut">· ${R.dias.length} ${R.dias.length===1?'día':'días'} de recogida</span>`:''}</p>
+  const t=txtRecogida(f.id), A=aforoDe(f.id);
+  return `<div class="card"><h2>${estadoRecIco(f.id)} Recogida ${esc(CAMP)}</h2><p>${t.charAt(0).toUpperCase()+t.slice(1)}${R.dias.length?` <span class="mut">· ${R.dias.length} ${R.dias.length===1?'día':'días'} de recogida</span>`:''}</p>
+    ${A?`<div class="bar" style="margin:4px 0 2px"><i style="width:${Math.min(100,Math.round(A.pct*100))}%;animation:none"></i></div><p class="mut" style="margin-top:2px">Llevas ${num(A.real)} kg de unos ${num(A.est)} del aforo (${Math.round(A.pct*100)} %)${A.falta?` · faltarían ≈${num(A.falta)} kg`:''}</p>`:''}
     <div class="row" style="gap:6px;flex-wrap:wrap">${R.estado==='en marcha'?`<button class="btn sm" onclick="abrirFinRecogida('${f.id}')">He terminado aquí (o paro por ahora)</button>`:`<button class="btn sec sm" onclick="abrirFinRecogida('${f.id}')">Cambiar</button><button class="btn sec sm" onclick="seguirRecogida('${f.id}')">Sigo recogiendo</button>`}</div></div>`; }
 function abrirFinRecogida(fid){ const f=D.fincas.find(x=>x.id===fid); if(!f) return; const e=recogidaDe(fid).est;
   const n0=((e?.notas||'').match(/Quedan unos (\d+) olivos/)||[])[1]||'', nota0=(e?.notas||'').replace(/^Quedan unos \d+ olivos\.\s*/,'');
@@ -1953,7 +1980,7 @@ function htmlLabores(lista, max, soloHecho){
       ${g.txt?`<div class="mut">${esc(g.txt)}</div>`:''}${L.info?`<div class="mut">${esc(L.info)}</div>`:''}
       <div class="mut" data-mejor="${L.id}" data-fincas="${fs.map(f=>f?f.id:'').join(',')}"></div>
       ${g.toca?`<div class="chips" style="margin:6px 0 4px">${fs.map(f=>`<button type="button" class="chip" title="Marcar como hecho" onclick="marcarLabor('${L.id}',[${f?`'${f.id}'`:'null'}])">✓ ${f&&!soloHecho?esc(f.nombre):'Hecho'}</button>`).join('')}${fs.length>1?`<button type="button" class="chip" onclick="marcarLabor('${L.id}',[${ids}])">✓ Todas</button>`:''}</div>
-      <div class="row"><button class="btn sec sm" onclick="marcarLabor('${L.id}',[${ids}],'pospuesta','${addDias(hoy(),7)}')">Ahora no</button><button class="btn sec sm" onclick="decidirLabor('${L.id}',[${ids}])">No hace falta…</button><button class="btn sec sm" onclick="tareaDeLabor('${L.id}',${fs.length===1&&fs[0]?`'${fs[0].id}'`:'null'})">Apuntar como tarea</button></div>`:`<div class="mut">${fs.map(f=>f?esc(f.nombre):'').filter(Boolean).join(', ')}</div>`}
+      <div class="row" style="gap:6px"><button class="btn sec sm" onclick="marcarLabor('${L.id}',[${ids}],'pospuesta','${addDias(hoy(),7)}')" title="Que no salga en una semana">Ahora no</button><button class="btn sec sm" onclick="decidirLabor('${L.id}',[${ids}])" title="Elige las fincas y di por qué">No hace falta…</button><button class="btn sec sm" onclick="tareaDeLabor('${L.id}',${fs.length===1&&fs[0]?`'${fs[0].id}'`:'null'})" title="Apuntar como tarea">📌 Tarea</button></div>`:`<div class="mut">${fs.map(f=>f?esc(f.nombre):'').filter(Boolean).join(', ')}</div>`}
     </div>`; }).join('');
 }
 // Mejor día según la previsión de la primera finca con ubicación
@@ -2017,14 +2044,14 @@ async function contextoTecnico(pregunta){
       pesadas:K.ps.map(p=>({fecha:p.fecha, finca:fincaNom(p.finca_id), kilos:Number(p.kilos), almazara:(p.almazara||'').trim()||null, aceituna:p.tipo||null, rendimiento:p.rendimiento?Number(p.rendimiento):null, para_casa:!!p.autoconsumo, notas:p.notas||undefined})),
       cobrado:{kilos_que_se_cobran:Math.round(KC.kilos||0), cobrado_eur:r2(KC.venta), eur_por_kg:KC.eurKg?Math.round(KC.eurKg*1000)/1000:null, liquidada:KC.liquidada}},
     // cómo va la recogida en cada finca: «sin empezar», «en marcha», «parada» (vuelve el día «vuelve_el») o «terminada». Lo dice el agricultor: no le digas que termine una finca parada o terminada
-    estado_recogida:fincas.map(f=>{ const R=recogidaDe(f.id); return {finca:f.nombre, estado:R.estado, primer_dia:R.dias[0]||null, ultimo_dia:R.ult, dias:R.dias.length, vuelve_el:R.est?.hasta||null, nota:R.est?.notas||null}; }),
+    estado_recogida:fincas.map(f=>{ const R=recogidaDe(f.id), A=aforoDe(f.id); return {finca:f.nombre, estado:R.estado, primer_dia:R.dias[0]||null, ultimo_dia:R.ult, dias:R.dias.length, vuelve_el:R.est?.hasta||null, nota:R.est?.notas||null, ...(A?{kilos_aforo:A.est, llevas_pct:Math.round(A.pct*100)}:{})}; }),
     tareas_pendientes:D.tareas.filter(t=>!t.hecha&&(t.fecha_fin||t.fecha)>=hace(30)&&t.fecha<=addDias(h,120)).map(t=>({fecha:t.fecha, hasta:finTarea(t)?t.fecha_fin:undefined, titulo:t.titulo, tipo:t.tipo||undefined, finca:t.finca_id?fincaNom(t.finca_id):'todas', notas:t.notas||undefined})),
     notas_de_campo_abiertas:D.notas.filter(n=>!n.resuelta).slice(0,20).map(n=>({fecha:n.fecha, finca:n.finca_id?fincaNom(n.finca_id):'todas', texto:n.texto, tipo:n.tipo||undefined})),
     // lo que el agricultor ha decidido sobre tus consejos anteriores y sobre el calendario (con su motivo): respétalo
     lo_que_decidio_de_tus_consejos:D.consejos.slice(0,6).flatMap(c=>(c.respuesta?.recomendaciones||[]).filter(r=>r.estado).map(r=>({consejo_del:c.fecha, titulo:r.titulo, fincas:r.fincas||[], decision:{hecha:'hecho',no_toca:'no hace falta',pospuesta:'ahora no'}[r.estado.e]||r.estado.e, el:r.estado.fecha, motivo:r.estado.motivo||undefined, hasta:r.estado.hasta||undefined}))),
     labores_dejadas_de_lado:apartadas().filter(x=>x.estado!=='parada').map(x=>({labor:nomL(x.labor), finca:x.finca_id?fincaNom(x.finca_id):'todas', decision:x.estado==='no_toca'?'no hace falta':'ahora no', hasta:x.hasta, motivo:x.notas||undefined})),
     // lo que tiene en la nave y la dosis que le dijeron en la cooperativa o la tienda (por cuba)
-    almacen:D.almacen.filter(a=>a.activo!==false).map(a=>({producto:a.nombre, tipo:a.tipo||undefined, quedan:a.cantidad!=null?`${Number(a.cantidad)} ${a.unidad||''}`.trim():undefined, dosis_que_le_dijeron:a.dosis_cant&&a.dosis_cuba?`${Number(a.dosis_cant)} ${a.dosis_ud||''} en ${Number(a.dosis_cuba)} l de agua`:null, dosis_etiqueta:a.etiqueta_dosis?`${Number(a.etiqueta_dosis)} ${a.etiqueta_ud||''}`.trim():undefined, caduca:a.caduca||undefined, notas:a.notas||undefined})),
+    almacen:D.almacen.filter(a=>a.activo!==false).map(a=>({producto:a.nombre, tipo:a.tipo||undefined, quedan:a.cantidad!=null?`${Number(a.cantidad)} ${a.unidad||''}`.trim():undefined, dosis_que_le_dijeron:a.dosis_cant&&a.dosis_cuba?`${Number(a.dosis_cant)} ${a.dosis_ud||''} en ${Number(a.dosis_cuba)} l de agua`:null, dosis_etiqueta:a.etiqueta_dosis?`${Number(a.etiqueta_dosis)}${Number(a.etiqueta_dosis_max)>Number(a.etiqueta_dosis)?'–'+Number(a.etiqueta_dosis_max):''} ${a.etiqueta_ud||''}`.trim():undefined, caduca:a.caduca||undefined, notas:a.notas||undefined})),
     // circulares de la cooperativa de los últimos 4 meses, tal como las ha guardado el agricultor
     recomendaciones_cooperativa:D.recomendaciones.filter(x=>x.fecha>=hace(120)).slice(0,6).map(x=>{ const d=x.datos||{}; return {fecha:x.fecha, de:x.emisor||null, asunto:x.titulo||null, resumen:d.resumen||null, zona:d.zona||undefined, problemas:d.problemas||[],
       recomendaciones:(d.recomendaciones||[]).map(r=>({titulo:r.titulo, tipo:r.tipo, cuando:r.cuando||undefined, desde:r.desde||undefined, hasta:r.hasta||undefined, productos:r.productos||[], condiciones:r.condiciones||undefined})), avisos:d.avisos||[], nota_suya:x.notas||undefined}; }),
@@ -2033,7 +2060,7 @@ async function contextoTecnico(pregunta){
     clima_pasado:clima, prevision_7_dias:prevision,
     hecho_ultimo_ano:{
       labores:D.labores.filter(l=>l.estado==='hecha'&&l.fecha>=hace(365)).map(l=>({fecha:l.fecha,labor:nomL(l.labor),finca:fincaNom(l.finca_id)})),
-      tratamientos:D.tratamientos.filter(t=>t.fecha>=hace(365)).map(t=>({fecha:t.fecha,finca:fincaNom(t.finca_id),producto:t.producto,dosis:t.dosis,motivo:t.motivo})),
+      tratamientos:D.tratamientos.filter(t=>t.fecha>=hace(365)).map(t=>({fecha:t.fecha,finca:fincaNom(t.finca_id),producto:t.producto,dosis:t.dosis,motivo:t.motivo,notas:[t.notas,D.aplicaciones.find(a=>a.id===t.aplicacion_id)?.notas].filter(Boolean).join(' · ')||undefined})),
       jornadas_ult_6_meses:Object.entries(faenas).map(([k,v])=>({faena_finca:k,...v})),
       dias_perdidos:D.dias_perdidos.filter(x=>x.fecha>=hace(90)).map(x=>({fecha:x.fecha,finca:fincaNom(x.finca_id),motivo:x.motivo})),
       compras_abonos_y_fitos:D.factura_lineas.filter(l=>['Abonos','Fitosanitarios'].includes(l.categoria)&&fact[l.factura_id]?.fecha>=hace(365)).map(l=>({fecha:fact[l.factura_id].fecha,producto:l.nombre_comun||l.producto,cantidad:l.cantidad,unidad:l.unidad})),
@@ -2106,17 +2133,25 @@ function htmlConsejo(c, corto){
     ${(x.fincas||[]).length?`<div><span class="mut">Dónde:</span> ${esc(x.fincas.join(', '))}</div>`:''}
     ${x.que_echar?`<div><span class="mut">Qué echar:</span> ${esc(x.que_echar)}</div>`:''}
     ${!corto&&x.por_que?`<div class="mut">${esc(x.por_que)}</div>`:''}
-    ${!corto&&!x.estado?`<div class="row" style="margin-top:6px;gap:6px;flex-wrap:wrap"><button class="btn sec sm" onclick="decidirConsejo('${c.id}',${i},'hecha')">✓ Hecho</button><button class="btn sec sm" onclick="decidirConsejo('${c.id}',${i},'no_toca')">No hace falta…</button><button class="btn sec sm" onclick="tareaDeConsejo('${c.id}',${i})">Apuntar como tarea</button></div>`:''}</div>`).join('')}
+    ${!corto&&!x.estado?`<div class="row" style="margin-top:6px;gap:6px;flex-wrap:wrap"><button class="btn sec sm" onclick="decidirConsejo('${c.id}',${i},'hecha')">✓ Hecho</button><button class="btn sec sm" onclick="decidirConsejo('${c.id}',${i},'no_toca')">No hace falta…</button><button class="btn sec sm" onclick="tareaDeConsejo('${c.id}',${i})" title="Apuntar como tarea">📌 Tarea</button></div>`:''}</div>`).join('')}
   ${!corto&&(r.vigilar||[]).length?`<b>Vigila estos días</b><ul>${r.vigilar.map(v=>`<li>${esc(v)}</li>`).join('')}</ul>`:''}
-  ${!corto&&(r.preguntas||[]).length?`<b>Para afinar más le falta saber</b><ul>${r.preguntas.map(v=>`<li>${esc(v)}</li>`).join('')}</ul><p class="mut">Puedes contestárselo escribiendo arriba.</p>`:''}
+  ${!corto&&(r.preguntas||[]).length?`<b>Para afinar más le falta saber</b>${r.preguntas.map(v=>`<div class="row" style="flex-wrap:nowrap;align-items:flex-start;margin:4px 0"><span style="flex:1">• ${esc(v)}</span><button class="btn sec sm" onclick="contestarTec(this.dataset.p)" data-p="${esc(v)}">Contestar</button></div>`).join('')}`:''}
   <p class="mut" style="font-size:12px">${fFecha(c.fecha)} · ${c.ia==='gemini'?'Gemini':'Claude'} · Orientativo: revisa siempre la etiqueta, el plazo de seguridad y el boletín de la RAIF, y consulta a tu técnico o ATRIA ante la duda.</p>`;
 }
 const PREG_RAPIDAS=['¿Qué hago esta semana?','¿Tengo que curar ya?','¿Qué abono echo este año?','¿Cómo viene el repilo?','¿Cuándo empiezo a recoger?'];
+// Las preguntas rápidas cambian según el momento: con la recogida parada o terminada, ya no tiene sentido «¿cuándo empiezo?»
+function pregRapidas(){ const est=D.fincas.filter(f=>f.activa).map(f=>recogidaDe(f.id).estado), L=[...PREG_RAPIDAS];
+  if(est.some(e=>e==='parada'||e==='terminada')) L.splice(1,0,'¿Qué hago ahora que he parado de recoger?');
+  if(est.length&&est.every(e=>e!=='sin empezar')) L.splice(L.indexOf('¿Cuándo empiezo a recoger?'),1);
+  if(D.recomendaciones.some(x=>x.fecha>=addDias(hoy(),-30))) L.push('¿Qué te parece lo que recomienda la cooperativa?');
+  return L; }
+// Contestar a lo que pregunta el técnico: se escribe la respuesta y se le vuelve a consultar con ella
+function contestarTec(p){ const i=$('#tecPreg'); if(!i) return; i.value=`Sobre «${p}»: `; i.focus(); i.setSelectionRange(i.value.length,i.value.length); i.scrollIntoView({block:'center',behavior:'smooth'}); }
 function vTecnico(){
   const c=D.consejos[0];
   return `<div class="card"><h2>Técnico</h2>
     <p class="mut">Te aconseja con tus fincas, lo que llevas hecho, lo que has comprado, cómo viene el año de lluvias y temperaturas y la previsión de la semana.</p>
-    <div class="chips">${PREG_RAPIDAS.map(q=>`<button type="button" class="chip" ${TEC_ESPERA?'disabled':''} onclick="pedirConsejo(this.textContent)">${esc(q)}</button>`).join('')}</div>
+    <div class="chips scrollx">${pregRapidas().map(q=>`<button type="button" class="chip" ${TEC_ESPERA?'disabled':''} onclick="pedirConsejo(this.textContent)">${esc(q)}</button>`).join('')}</div>
     <div class="row" style="flex-wrap:nowrap"><input id="tecPreg" placeholder="O pregúntale lo que quieras" style="flex:1" onkeydown="if(event.key==='Enter'){pedirConsejo(this.value.trim())}"><button class="btn" ${TEC_ESPERA?'disabled':''} onclick="pedirConsejo($('#tecPreg').value.trim())">${TEC_ESPERA?'Pensando…':'Consultar'}</button></div>
     ${TEC_ESPERA?'<p class="mut">Mirando el tiempo, tus fincas y lo que llevas hecho… (10-40 s)</p>':''}</div>
   ${c?`<div class="card"><h2>Último consejo</h2>${htmlConsejo(c)}</div>`:''}
@@ -2167,7 +2202,7 @@ function revisarRec(d, arch){
     ${(d.problemas||[]).length?`<b>Lo que avisa</b><ul>${d.problemas.map(p=>`<li><b>${esc(p.nombre||'')}</b>: ${esc(p.situacion||'')}</li>`).join('')}</ul>`:''}
     ${recs.length?`<b>Recomendaciones</b>${recs.map((r,i)=>`<div class="lab"><label class="chk" style="margin:0"><input type="checkbox" data-ri="${i}" checked> <b>${esc(r.titulo||'')}</b></label>
       <div class="mut">${[r.cuando,r.condiciones].filter(Boolean).map(esc).join(' · ')}</div>${(r.productos||[]).length?`<div>${r.productos.map(p=>esc(txtProd(p))).join('<br>')}</div>`:''}${r.detalle?`<div class="mut">${esc(r.detalle)}</div>`:''}</div>`).join('')}`:'<p class="mut">No trae recomendaciones concretas.</p>'}
-    ${(d.avisos||[]).length?`<b>Otros avisos</b><ul>${d.avisos.map(a=>`<li>${a.fecha?fFecha(a.fecha)+': ':''}${esc(a.texto||'')}</li>`).join('')}</ul>`:''}
+    ${(d.avisos||[]).length?`<b>Otros avisos</b>${d.avisos.map((a,i)=>{ const f=fechaIA(a.fecha); return f&&f>=hoy()?`<label class="chk"><input type="checkbox" data-av="${i}" checked> ${fFecha(f)}: ${esc(a.texto||'')} <span class="mut">(recordármelo)</span></label>`:`<div class="mut">• ${f?fFecha(f)+': ':''}${esc(a.texto||'')}</div>`; }).join('')}`:''}
     <label>Notas tuyas (opcional)<input name="notas"></label>
     <div class="row acciones" style="justify-content:flex-end"><button type="button" class="btn sec" onclick="$('#dlg').close()">Cancelar</button><button class="btn" id="fOk">Guardar</button></div>`;
   const F=$('#frm'); mejorarFechas(F,false);
@@ -2179,19 +2214,22 @@ function revisarRec(d, arch){
     const r=await insertar('recomendaciones',{id, fecha:F.fecha.value||hoy(), emisor:F.emisor.value.trim()||null, titulo:F.titulo.value.trim()||null, notas:F.notas.value.trim()||null,
       datos:{resumen:F.resumen.value.trim()||null, zona:d.zona||null, problemas:d.problemas||[], recomendaciones:quedan, avisos:d.avisos||[], fotos}});
     if(!r.ok){ $('#fOk').disabled=false; $('#fOk').textContent='Guardar'; toast('Error: '+r.error.message); return; }
+    // los avisos con fecha que ha dejado marcados, como tareas (recordatorios)
+    const av=(d.avisos||[]).filter((a,i)=>F.querySelector(`[data-av="${i}"]`)?.checked).map(a=>({fecha:fechaIA(a.fecha), titulo:String(a.texto||'Aviso de la cooperativa').slice(0,120), tipo:'Papeles / trámites', hecha:false, notas:`Aviso de ${F.emisor.value.trim()||'la cooperativa'} (${fFecha(F.fecha.value||hoy())})`}));
+    let nT=0; if(av.length){ const t=await insertar('tareas',av); if(t.ok){ nT=av.length; if(!t.offline) await cargar('tareas',t.filas.map(f=>f.id)); } }
     $('#dlg').close(); if(!r.offline) await cargar('recomendaciones',[id]); SUB.campo='tecnico'; ir('campo');
-    toast(`Guardada${fotos.length<arch.length?' (sin '+(arch.length-fotos.length===arch.length?'el documento':'alguna página')+')':''}. El técnico ya la tiene en cuenta`); };
+    toast(`Guardada${fotos.length<arch.length?' (sin '+(arch.length-fotos.length===arch.length?'el documento':'alguna página')+')':''}${nT?` · ${nT} ${nT===1?'recordatorio apuntado':'recordatorios apuntados'}`:''}. El técnico ya la tiene en cuenta`); };
   if(!$('#dlg').open) $('#dlg').showModal(); }
 function htmlRec(x){ const d=x.datos||{};
   return `<p>${esc(d.resumen||'')}</p>
     ${(d.problemas||[]).length?`<p>${d.problemas.map(p=>`<b>${esc(p.nombre||'')}</b>: ${esc(p.situacion||'')}`).join('<br>')}</p>`:''}
-    ${(d.recomendaciones||[]).map((r,i)=>`<div class="lab"><div class="row" style="flex-wrap:nowrap;align-items:flex-start"><b style="flex:1">${esc(r.titulo||'')}</b><button class="btn sec sm" onclick="tareaDeRec('${x.id}',${i})">Apuntar como tarea</button></div>
+    ${(d.recomendaciones||[]).map((r,i)=>`<div class="lab"><div class="row" style="flex-wrap:nowrap;align-items:flex-start"><b style="flex:1">${esc(r.titulo||'')}</b><button class="btn sec sm" onclick="tareaDeRec('${x.id}',${i})" title="Apuntar como tarea">📌 Tarea</button></div>
       <div class="mut">${[r.cuando,r.condiciones].filter(Boolean).map(esc).join(' · ')}</div>${(r.productos||[]).map((p,j)=>`<div>${esc(txtProd(p))}${p.dosis?almDeProd(p).map(a=>` <button class="btn sec sm" style="margin:2px 0" onclick="usarDosisRec('${x.id}',${i},${j},'${a.id}')">Usar esta dosis en «${esc(a.nombre)}»</button>`).join(''):''}</div>`).join('')}${r.detalle?`<div class="mut">${esc(r.detalle)}</div>`:''}</div>`).join('')}
     ${(d.avisos||[]).length?`<p class="mut">${d.avisos.map(a=>`${a.fecha?fFecha(a.fecha)+': ':''}${esc(a.texto||'')}`).join('<br>')}</p>`:''}
     ${x.notas?`<p><i>${esc(x.notas)}</i></p>`:''}
     <div class="row" style="gap:6px;flex-wrap:wrap">${(d.fotos||[]).map((p,i)=>`<button class="btn sec sm" onclick="verFoto('${p}')">${/\.pdf$/.test(p)?'Ver PDF':'Ver página '+(i+1)}</button>`).join('')}<span style="flex:1"></span><button class="btn del sm" onclick="borrarRec('${x.id}')">Borrar</button></div>`; }
 function htmlRecs(){ const L=D.recomendaciones;
-  return `<div class="card"><h2>Recomendaciones de la cooperativa<span class="sp"></span><button class="btn sm" onclick="escanearRec()">Escanear una</button></h2>
+  return `<div class="card"><h2>📋 De la cooperativa<span class="sp"></span><button class="btn sm" onclick="escanearRec()">Escanear</button></h2>
     ${L.length?L.slice(0,8).map((x,i)=>`<details ${i===0?'open':''}><summary>${fFecha(x.fecha)} · ${esc(x.titulo||'Recomendación')}${x.emisor?` <span class="mut">· ${esc(x.emisor)}</span>`:''}</summary>${htmlRec(x)}</details>`).join(''):'<p class="mut">Haz una foto a la circular o elige el PDF que te mandan por WhatsApp. Se lee sola, la guardas y el técnico la tiene en cuenta en sus consejos.</p>'}</div>`; }
 function tareaDeRec(id,i){ const x=D.recomendaciones.find(y=>y.id===id), r=x?.datos?.recomendaciones?.[i]; if(!r) return;
   const okF=f=>/^\d{4}-\d{2}-\d{2}$/.test(f||''), ini=okF(r.desde)&&r.desde>=hoy()?r.desde:hoy();
@@ -2317,6 +2355,9 @@ function abrirAplicacion(apl=null, cubaId=null){
     const filas=vivas().map(i=>({producto:F[`pr_${i}`].value.trim(), valor:pn(F[`dv_${i}`].value), unidad:F[`du_${i}`].value, plazo:pn(F[`ps_${i}`].value), nr:F[`nr_${i}`].value.trim()||null, clase:F[`cl_${i}`]?.value||null, riqueza:F[`rq_${i}`]?.value.trim()||null})).filter(x=>x.producto);
     if(!finca){ toast('Elige la finca'); return; }
     if(!filas.length){ toast('Pon al menos un producto'); return; }
+    // si en esa finca la recogida está parada hasta un día, que el plazo de seguridad no la pise
+    { const e=recogidaDe(finca).est, fa=F.fecha.value||hoy(); if(e?.estado==='parada'&&e.hasta){ const L=filas.filter(x=>x.plazo>0&&addDias(fa,x.plazo)>e.hasta);
+      if(L.length&&!confirm(`Ojo: en ${fincaNom(finca)} vuelves a recoger el ${fFecha(e.hasta)}, pero con ${L.map(x=>`${x.producto} (plazo ${x.plazo} días)`).join(' y ')} no se podría recoger hasta el ${fFecha(addDias(fa,Math.max(...L.map(x=>x.plazo))))}. ¿Apuntarla igualmente?`)) return; } }
     const ol=pn(F.olivos.value), olT=ol||f?.olivos||0, ha=f?.ha?(ol&&f.olivos?Number(f.ha)*ol/f.olivos:Number(f.ha)):null, tot=(cuba||0)*(nc||0), lha=ha&&tot?tot/ha:null;
     $('#fOk').disabled=true;
     if(apl){ const {error}=await sb.from('olv_aplicaciones').delete().eq('id',apl.id); if(error){ $('#fOk').disabled=false; if(!sinRed(error)) toast('Error: '+error.message); return; } }
@@ -2544,9 +2585,9 @@ function vCosecha(){
   const K=cosecha(CAMP), prev=cosecha(`${parseInt(CAMP)-1}/${String(parseInt(CAMP)).slice(2)}`);
   const jr={}; const [ini,fin]=campRango(CAMP); D.jornales.filter(j=>j.fecha>=ini&&j.fecha<=fin&&esRecAce(j.tarea)).forEach(j=>jr[j.finca_id||'']=(jr[j.finca_id||'']||0)+jornadasDe([j]));
   const dias=[...new Set(K.ps.map(p=>p.fecha))].sort().reverse();
-  return `<div class="row" style="justify-content:flex-end;margin-bottom:8px"><button class="btn sm" onclick="escanearTickets()">Escanear tickets</button><button class="btn sec sm" onclick="editarAlmazaras()">Mis almazaras</button><button class="btn sec sm" onclick="abrirDAT()">DAT para la almazara</button></div><div class="kpis"><div class="kpi"><span>Kilos ${esc(CAMP)}</span><b>${num(K.tot)}</b>${K.casa?`<span class="mut" style="font-size:12px">${num(K.totV)} a la venta · ${num(K.casa)} para casa</span>`:''}</div><div class="kpi"><span>Rendimiento medio</span><b>${K.rend?num(K.rend,2)+' %':'—'}</b></div>
+  return `<div class="row" style="justify-content:flex-end;margin-bottom:8px"><button class="btn sm" onclick="escanearTickets()">Escanear tickets</button><button class="btn sec sm" onclick="editarAlmazaras()">Mis almazaras</button><button class="btn sec sm" onclick="abrirDAT()">DAT para la almazara</button></div><div class="kpis"><div class="kpi"><span>Kilos ${esc(CAMP)}</span><b>${num(K.tot)}</b>${K.casa?`<span class="mut" style="font-size:12px">${num(K.totV)} a la venta · ${num(K.casa)} para casa</span>`:''}</div><div class="kpi"><span>Rendimiento medio</span><b>${K.rend?num(K.rend,2)+' %':'—'}</b>${K.rend&&K.ps.some(p=>!p.rendimiento)?`<span class="mut" style="font-size:12px">solo de ${K.ps.filter(p=>p.rendimiento).length} de ${K.ps.length} pesadas</span>`:''}</div>
     <div class="kpi"><span>Aceite aprox.</span><b>${K.rend?num(K.tot*K.rend/100)+' kg':'—'}</b></div><div class="kpi"><span>Campaña anterior</span><b>${prev.tot?num(prev.tot)+' kg':'—'}</b></div></div>
-  <div class="card"><h2>Por finca</h2>${Object.keys(K.porF).length?`<table><tr><th>Finca</th><th class="n">Kilos</th><th class="n">Kg/olivo</th><th class="n">Rend.</th><th class="n">Kg/jornal</th></tr>${Object.entries(K.porF).map(([fid,x])=>{ const f=D.fincas.find(y=>y.id===fid); return `<tr class="click" onclick="verFinca('${fid}')"><td>${esc(fincaNom(fid||null))}<div class="mut">${x.dias.size} ${x.dias.size===1?'día':'días'}${f?' · '+txtRecogida(f.id):''}</div></td><td class="n">${num(x.kilos)}${x.casa?`<div class="mut">${num(x.casa)} para casa</div>`:''}</td><td class="n">${f?.olivos?num(x.kilos/f.olivos,1):'—'}</td><td class="n">${x.kconr?num(x.kr/x.kconr,2)+' %':'—'}</td><td class="n">${jr[fid]?num(x.kilos/jr[fid]):'—'}</td></tr>`; }).join('')}</table><p class="mut">Kg/jornal: kilos entre jornadas apuntadas con la faena «Recogida».</p>`:'<p class="mut">Apunta cada pesada de la almazara con el +: kilos, finca y, cuando lo sepas, el rendimiento.</p>'}</div>
+  <div class="card"><h2>Por finca</h2>${Object.keys(K.porF).length?`<table><tr><th>Finca</th><th class="n">Kilos</th><th class="n">Kg/olivo</th><th class="n">Rend.</th><th class="n">Kg/jornal</th></tr>${Object.entries(K.porF).map(([fid,x])=>{ const f=D.fincas.find(y=>y.id===fid); return `<tr class="click" onclick="verFinca('${fid}')"><td>${esc(fincaNom(fid||null))}<div class="mut">${x.dias.size} ${x.dias.size===1?'día':'días'}</div></td><td class="n">${num(x.kilos)}${x.casa?`<div class="mut">${num(x.casa)} para casa</div>`:''}</td><td class="n">${f?.olivos?num(x.kilos/f.olivos,1):'—'}</td><td class="n">${x.kconr?num(x.kr/x.kconr,2)+' %':'—'}</td><td class="n">${jr[fid]?num(x.kilos/jr[fid]):'—'}</td></tr>${f?`<tr class="click" onclick="verFinca('${fid}')"><td colspan="5" class="mut" style="padding-top:0;font-size:13px">${estadoRecIco(f.id)} ${txtRecogida(f.id)}</td></tr>`:''}`; }).join('')}</table><p class="mut">Kg/jornal: kilos entre jornadas apuntadas con la faena «Recogida».</p>`:'<p class="mut">Apunta cada pesada de la almazara con el +: kilos, finca y, cuando lo sepas, el rendimiento.</p>'}</div>
   ${dias.length?`<div class="card"><h2>Pesadas</h2>${dias.map(d=>{ const l=K.ps.filter(p=>p.fecha===d); return `<div class="grp">${fFecha(d)} · ${num(l.reduce((a,p)=>a+Number(p.kilos),0))} kg</div><table>${l.map(p=>`<tr class="click" data-ed="pesadas:${p.id}"><td>${esc(fincaNom(p.finca_id))}<div class="mut">${esc([p.almazara,p.tipo,p.ticket?'ticket '+p.ticket:''].filter(Boolean).join(' · '))}</div>${p.autoconsumo?'<span class="tag">para casa, no se cobra</span>':''}</td><td class="n">${num(p.kilos)} kg${p.rendimiento?`<div class="mut">${num(p.rendimiento,2)} %</div>`:''}</td></tr>`).join('')}</table>`; }).join('')}</div>`:''}`;
 }
 // --- Notas de campo
@@ -2815,6 +2856,7 @@ function abrirBuscar(){
     MAPA.filter(([q,d])=>has(q,d)).slice(0,6).forEach(([q,d,fn])=>R.push(['Apartado',q,d,`$('#dlg').close();${fn}`]));
     misAlm().filter(a=>has(a.nombre,a.cif,a.localidad,a.contacto,a.telefono,'almazara cooperativa puesto')).forEach(a=>R.push(['Almazara',a.nombre,[a.cif,a.telefono,a.localidad].filter(Boolean).join(' · '),`editarAlmazaras()`]));
     D.almacen.filter(a=>has(a.nombre,a.num_registro,a.tipo)).slice(0,10).forEach(a=>R.push(['Almacén',`${a.nombre}${a.cantidad!=null?' · '+num(a.cantidad,2)+' '+(a.unidad||''):''}`,a.tipo||'',`abrir('almacen',D.almacen.find(y=>y.id==='${a.id}'))`]));
+    D.recomendaciones.filter(x=>has(x.titulo,x.emisor,x.notas,x.datos?.resumen,...(x.datos?.recomendaciones||[]).flatMap(r=>[r.titulo,...(r.productos||[]).flatMap(p=>[p.materia_activa,p.nombre_comercial])]))).slice(0,10).forEach(x=>R.push(['Cooperativa',x.titulo||'Recomendación',`${x.emisor||''} · ${fFecha(x.fecha)}`,"SUB.campo='tecnico';ir('campo')"]));
     D.pesadas.filter(x=>has(x.almazara,x.ticket,x.notas)).slice(0,10).forEach(x=>R.push(['Pesada',`${num(x.kilos)} kg · ${x.almazara||''}`,`${fincaNom(x.finca_id)} · ${fFecha(x.fecha)}`,`abrir('pesadas',D.pesadas.find(y=>y.id==='${x.id}'))`]));
     D.ingresos.filter(x=>has(x.almazara,x.tipo,x.notas,x.campana)).slice(0,10).forEach(x=>R.push(['Cobro',`${x.tipo} · ${eur(x.importe)}${x.almazara?' · '+x.almazara:''}`,fFecha(x.fecha),`abrir('ingresos',D.ingresos.find(y=>y.id==='${x.id}'))`]));
     D.mantenimientos.filter(x=>has((x.tipos||[]).join(' '),x.notas,D.maquinas.find(m=>m.id===x.maquina_id)?.nombre,'mantenimiento')).slice(0,8).forEach(x=>R.push(['Mantenimiento',`${D.maquinas.find(m=>m.id===x.maquina_id)?.nombre||''}: ${(x.tipos||[]).join(', ')}`,fFecha(x.fecha),`abrirMant('${x.maquina_id}')`]));
@@ -3440,7 +3482,7 @@ function vInicio(){
     <div class="kpi"><span>Ingresos ${esc(CAMP)}</span><b>${eur(C.totI)}</b></div>
     <div class="kpi"><span>Gastos ${esc(CAMP)}</span><b>${eur(C.totG)}</b></div>
     <div class="kpi"><span>Margen</span><b class="${m>=0?'pos':'neg'}">${eur(m)}</b></div>
-    <div class="kpi"><span>Kilos aceituna</span><b>${num(C.kilos)}</b></div>
+    <div class="kpi click" onclick="SUB.cuentas='cosecha';ir('cuentas')"><span>Kilos aceituna</span><b>${num(C.kilos)}</b>${(()=>{ const ca=kilosCampana(CAMP).casa, fs=D.fincas.filter(f=>f.activa&&recogidaDe(f.id).estado!=='sin empezar'); return `${ca?`<span class="mut" style="font-size:12px">${num(ca)} para casa</span>`:''}${fs.length?`<span class="mut" style="font-size:12px;display:block">${fs.map(f=>`${estadoRecIco(f.id)} ${esc(f.nombre)}`).join(' · ')}</span>`:''}`; })()}</div>
     <div class="kpi"><span>Coste por kg</span><b>${C.kilos?eur(C.totG/C.kilos):'—'}</b></div>
     <div class="kpi"><span>Coste por olivo</span><b>${C.totOl?eur(C.totG/C.totOl):'—'}</b></div>
   </div></div>
@@ -3826,7 +3868,9 @@ function fUd(x,uMil,uBase){ return x<1?`${num(x*1000,x*1000<10?1:0)} ${uMil}`:`$
 function porFinca(d,herb){ const cu=herb?cubaSuelo():cubaCopa(), fs=fincasConCubas(herb); if(!fs.length) return '';
   return `<table style="margin-top:6px">${fs.map(f=>{ const n=Number(herb?f.cubas_suelo:f.cubas_copa), prod=d.c100/100*cu*n, frac=fraccionTratada(f), haT=f.ha>0?Number(f.ha)*frac:null;
     return `<tr><td>${esc(f.nombre)}<div class="mut">${String(n).replace(".",",")} cuba${n>1?'s':''} de ${num(cu)} l${herb&&haT?` · ${num(haT,2)} ha tratadas`:!herb&&f.olivos?` · ${num(n*cu/f.olivos,1)} l/olivo`:''}</div></td><td class="n"><b>${fUd(prod,d.uMil,d.uBase)}</b>${herb&&haT?`<div class="mut">${fUd(prod/haT,d.uMil,d.uBase)}/ha</div>`:''}</td></tr>`; }).join('')}</table>`; }
-function textoDosis(d,etq,etqU,herb){ if(!d) return '';
+function textoDosis(d,etq0,etqU,herb,etqMax){ if(!d) return '';
+  // la etiqueta suele dar un margen: se compara con el máximo (lo legal) y se dice si quedas por debajo del mínimo
+  const mn=Number(etq0)>0?Number(etq0):null, mx=Number(etqMax)>0?Number(etqMax):null, etq=mx||mn, rango=mn&&mx&&mx>mn?`${num(mn)}–${num(mx)}`:null;
   if(herb){ const fs=fincasConCubas(true); let h=`Equivale a <b>${num(d.c100*1000,0)} ${d.uMil}/100 l</b> de caldo.`;
     h+= fs.length?`<br>Producto que llevas a cada finca (dejando ${num(franjaM(),2)} m sin tratar en el centro de la calle):${porFinca(d,true)}`:'<br><span class="mut">En el herbicida la etiqueta va por hectárea tratada. Pon en cada finca las cubas de herbicida que gastas (Fincas → Más detalles) y te digo lo que cae por hectárea.</span>';
     const e=Number(etq); if(e>0&&/ha$/.test(etqU||'')&&fs.some(f=>f.ha>0)){ const cu=cubaSuelo(); const r=fs.filter(f=>f.ha>0).map(f=>{ const pc=Math.round(d.c100/100*cu*f.cubas_suelo/(f.ha*fraccionTratada(f))/e*100); return `${esc(f.nombre)} <b class="${pc>110?'neg':''}">${pc} %</b>`; });
@@ -3834,12 +3878,12 @@ function textoDosis(d,etq,etqU,herb){ if(!d) return '';
     else if(!(e>0)) h+='<br><span class="mut">La etiqueta manda: apunta su dosis por ha en «Más detalles» y te digo si cuadra.</span>';
     return h; }
   let h=`Equivale a <b>${num(d.c100*1000,0)} ${d.uMil}/100 l</b> (${num(d.pct,2)} %).<br>Como curas tú (≈${num(d.lo.v,1)} l por olivo${d.lo.de==='supuesto'?', <b>supuesto</b>':` · ${d.lo.de}`} × ≈${num(d.oh.v,0)} olivos/ha = ${num(d.lha,0)} l/ha): caen <b>${fUd(d.porHa,d.uMil,d.uBase)} por hectárea</b> y ${fUd(d.porOlivo,d.uMil,d.uBase)} por olivo.`;
-  const e=Number(etq); if(e>0&&etqU){ let ratio=null, txt='';
-    if(etqU==='cc/100L'||etqU==='g/100L'){ ratio=d.c100*1000/e; txt=`${num(e)} ${etqU.replace('L',' l')}`; }
-    else if(etqU==='%'){ ratio=d.pct/e; txt=`${num(e)} %`; }
-    else { ratio=d.porHa/e; txt=`${num(e)} ${etqU}`; }
-    const pc=Math.round(ratio*100);
-    h+=`<br>Etiqueta: ${txt} → vas al <b class="${pc>110?'neg':''}">${pc} %</b> de la etiqueta${pc>110?'. <b>Te pasas</b>: la dosis de la etiqueta es el máximo legal.':pc<70?'. Vas bastante por debajo: puede quedarse corto.':'.'}`; }
+  const e=Number(etq); if(e>0&&etqU){ let ratio=null, txt='', tuya=null; const uT=etqU.replace('L',' l');
+    if(etqU==='cc/100L'||etqU==='g/100L') tuya=d.c100*1000; else if(etqU==='%') tuya=d.pct; else tuya=d.porHa;
+    ratio=tuya/e; txt=`${rango||num(e)} ${uT}`;
+    const pc=Math.round(ratio*100), bajo=rango&&tuya<mn*0.97;
+    h+=rango?`<br>Etiqueta: de ${txt}. Tú echas ${num(tuya,tuya<10?2:0)} ${uT}: ${pc>103?`<b class="neg">te pasas del máximo</b> (vas al ${pc} %): el máximo de la etiqueta es el límite legal.`:bajo?'<b>por debajo del mínimo</b>: puede quedarse corto.':'<b class="pos">dentro del margen</b>.'}`
+      :`<br>Etiqueta: ${txt} → vas al <b class="${pc>110?'neg':''}">${pc} %</b> de la etiqueta${pc>110?'. <b>Te pasas</b>: la dosis de la etiqueta es el máximo legal.':pc<70?'. Vas bastante por debajo: puede quedarse corto.':'.'}`; }
   else h+='<br><span class="mut">La etiqueta manda: si puedes, apunta su dosis en «Más detalles» y te digo si cuadra.</span>';
   const pf=porFinca(d,false); h+= pf?`<br>Producto para cada finca:${pf}`:'<br><span class="mut">Pon en cada finca cuántas cubas gastas al curar y te digo el producto que lleva cada una.</span>';
   return h; }
@@ -3847,12 +3891,12 @@ function activarDosisAlm(){ const F=$('#frm'), box=$('#almDos'); if(!box) return
   $('#frM').value=String(franjaM()).replace('.',',');
   $('#frM').onchange=()=>{ const v=pn($('#frM').value); if(v!=null&&v>=0&&v<10){ AJ.franja_m=v; guardarAjustes(true); } };
   const up=()=>{ const herb=F.tipo.value==='Herbicida'; $('#almFr').style.display=herb?'':'none'; const v=pn($('#frM').value); if(herb&&v!=null&&v>=0&&v<10) AJ.franja_m=v;
-    const d=dosisTienda(pn(F.dosis_cant.value),F.dosis_ud.value,pn(F.dosis_cuba.value)); box.style.display=d?'':'none'; box.innerHTML=textoDosis(d,pn(F.etiqueta_dosis?.value),F.etiqueta_ud?.value,herb); };
+    const d=dosisTienda(pn(F.dosis_cant.value),F.dosis_ud.value,pn(F.dosis_cuba.value)); box.style.display=d?'':'none'; box.innerHTML=textoDosis(d,pn(F.etiqueta_dosis?.value),F.etiqueta_ud?.value,herb,pn(F.etiqueta_dosis_max?.value)); };
   F.oninput=up; F.onchange=up; up(); }
 // Dosis para la cuba a partir del almacén (cc/100L o g/100L)
 function dosisDeAlm(nombre){ const a=buscaAlm(nombre); if(!a) return null;
   const d=dosisTienda(a.dosis_cant,a.dosis_ud,a.dosis_cuba); if(d) return {a, valor:Math.round(d.c100*1000*10)/10, unidad:d.solido?'g/100L':'cc/100L', de:'tienda'};
-  if(Number(a.etiqueta_dosis)>0&&a.etiqueta_ud) return {a, valor:Number(a.etiqueta_dosis), unidad:a.etiqueta_ud, de:'etiqueta'};
+  if(Number(a.etiqueta_dosis)>0&&a.etiqueta_ud) return {a, valor:Number(a.etiqueta_dosis), max:Number(a.etiqueta_dosis_max)>0?Number(a.etiqueta_dosis_max):null, unidad:a.etiqueta_ud, de:'etiqueta'};
   return {a}; }
 function tipoAlm(l){ const t=`${l.categoria} ${l.producto}`; return /abono/i.test(l.categoria||'')?'Abono':/herbic/i.test(t)?'Herbicida':/foliar|amino|bioestim/i.test(t)?'Foliar / aminoácidos':'Fitosanitario'; }
 // Cuánto mete una línea de factura en el almacén, en kg o litros: «2 sacos» de «COBRE 5KG» = 10 kg (ua: la unidad del producto que ya tienes)
@@ -5216,7 +5260,7 @@ function htmlEsperada(){ const fs=D.fincas.filter(f=>f.activa), [ini]=campRango(
   const P=paramsRecog(), ver=x=>{ if(!P.eur||!P.coste) return ''; const v=veredictoKg(Number(x.a.valor),P.eur.v,P.coste.v); return `<div class="mut"><span class="dot ${v.c}"></span>${num(x.a.valor,1)} kg/olivo · ${v.t.toLowerCase()}</div>`; };
   if(!l.length) return `<div class="card"><h2>Cosecha esperada</h2><p class="mut">Haz un aforo por finca (Campo → Muestras → Aforo) y aquí verás lo que esperas y lo que llevas entregado.</p><button class="btn sec sm" onclick="abrirAforo()">Hacer aforo</button></div>`;
   const tE=l.reduce((a,x)=>a+x.est,0), tR=l.reduce((a,x)=>a+x.real,0);
-  return `<div class="card"><h2>Cosecha esperada · ${esc(CAMP)}<span class="sp"></span><button class="btn sec sm" onclick="abrirAforo()">Nuevo aforo</button></h2><table><tr><th>Finca</th><th class="n">Esperado</th><th class="n">Entregado</th><th class="n">Falta</th></tr>${l.map(x=>`<tr class="click" onclick="verCompensa('${x.f.id}')"><td>${esc(x.f.nombre)}${ver(x)}</td><td class="n">${num(x.est)}</td><td class="n">${num(x.real)}</td><td class="n">${x.est>x.real?num(x.est-x.real):'<span class="pos">hecho</span>'}</td></tr>`).join('')}<tr><td><b>Total</b></td><td class="n"><b>${num(tE)}</b></td><td class="n"><b>${num(tR)}</b></td><td class="n"><b>${tE>tR?num(tE-tR):''}</b></td></tr></table><p class="mut">El esperado sale de tu aforo: es tan bueno como los olivos que mires. Toca una finca para ver si compensa recogerla.</p>${htmlRecogCuentas()}</div>`; }
+  return `<div class="card"><h2>Cosecha esperada · ${esc(CAMP)}<span class="sp"></span><button class="btn sec sm" onclick="abrirAforo()">Nuevo aforo</button></h2><table><tr><th>Finca</th><th class="n">Esperado</th><th class="n">Entregado</th><th class="n">Falta</th></tr>${l.map(x=>`<tr class="click" onclick="verCompensa('${x.f.id}')"><td>${esc(x.f.nombre)}${ver(x)}<div class="mut" style="font-size:12px">${estadoRecIco(x.f.id)} ${txtRecogida(x.f.id)}</div></td><td class="n">${num(x.est)}</td><td class="n">${num(x.real)}</td><td class="n">${x.est>x.real?num(x.est-x.real):'<span class="pos">hecho</span>'}</td></tr>`).join('')}<tr><td><b>Total</b></td><td class="n"><b>${num(tE)}</b></td><td class="n"><b>${num(tR)}</b></td><td class="n"><b>${tE>tR?num(tE-tR):''}</b></td></tr></table><p class="mut">El esperado sale de tu aforo: es tan bueno como los olivos que mires. Toca una finca para ver si compensa recogerla.</p>${htmlRecogCuentas()}</div>`; }
 function verCompensa(fid){ const f=D.fincas.find(x=>x.id===fid), a=muestras('aforo',fid).pop(); if(!f||!a) return;
   $('#frm').oninput=null; $('#frm').onchange=null; $('#frm').onsubmit=e=>{ e.preventDefault(); $('#dlg').close(); };
   $('#frm').innerHTML=`<h3>${esc(f.nombre)}: ¿compensa recoger?</h3><p class="mut">Aforo del ${fFecha(a.fecha)}: ${num(a.valor,1)} kg/olivo${a.datos?.suelo?` · suelo ${num(a.datos.suelo,1)} kg`:''}.</p>${htmlCompensa(f,Number(a.valor),Number(a.datos?.suelo)||0)}<div class="row acciones" style="justify-content:flex-end"><button class="btn">Cerrar</button></div>`;
