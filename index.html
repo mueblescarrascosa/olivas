@@ -183,8 +183,8 @@ details.adv{margin:4px 0 10px}details.adv summary{cursor:pointer;color:var(--olv
 
 <script>
 // ===== Configuración =====
-const VERSION = '3.48';
-const VERSION_FECHA = '27 oct 2026';
+const VERSION = '3.49';
+const VERSION_FECHA = '29 oct 2026';
 const CREDITOS = `Olivas v${VERSION} (${VERSION_FECHA}) · © 2026 Alfonso Carrascosa Martínez · Hecha con Claude (Anthropic)`;
 const SUPA_URL = 'https://kseyndjbmkaflpoqitsj.supabase.co';
 const SUPA_KEY = 'sb_publishable_CbwajQX7DgAoK3fV6GVU5g_18CWeqMG';
@@ -472,14 +472,16 @@ const S = {
     {k:'marca',l:'Marca'},{k:'modelo',l:'Modelo'},
     {k:'num_serie',l:'Nº de serie / bastidor',help:'Viene en la placa de la máquina: hazle una foto también'},
     {k:'_fotos',t:'html',html:'<div id="mqFotos"></div>'},
-    {k:'itv_proxima',l:'Próxima ITV',t:'date',q:[['Pasada hoy: +1 año',365],['+2 años',730]],grp:'veh'},{k:'seguro_vence',l:'Vence el seguro',t:'date',q:[['Renovado hoy: +1 año',365]],grp:'veh'},
-    {k:'matricula',l:'Matrícula',grp:'veh'},
+    {k:'itv_proxima',l:'Próxima ITV',t:'date',q:[['Pasada hoy: +2 años',730],['+1 año',365]],grp:'itv'},
+    {k:'fecha_inspeccion',l:'Última ITEAF (inspección del equipo): el día que se pasó',t:'date',q:[['Pasada hoy',0]],grp:'roma',help:'No es la ITV. Se pasa cada 3 años; la app te avisa de la próxima'},
+    {k:'seguro_vence',l:'Vence el seguro',t:'date',q:[['Renovado hoy: +1 año',365]],grp:'itv'},
+    {k:'matricula',l:'Matrícula',grp:'itv'},
     {k:'consumo_l100',l:'Consumo (litros cada 100 km)',t:'num',grp:'veh',adv:1,help:'Para calcular lo que cuesta ir a las fincas'},{k:'combustible',l:'Combustible',t:'chips',ops:[['B','Gasóleo B'],['A','Gasóleo A'],['95','Gasolina 95']],grp:'veh',adv:1},
     {k:'capacidad_l',l:'Litros de la cuba o mochila',t:'num',grp:'apl'},
     {k:'n_pistolas',l:'Nº de pistolas',t:'int',grp:'pist'},{k:'ancho_m',l:'Ancho de la barra (m)',t:'num',grp:'barra'},
     {k:'caudal_lmin',l:'Caudal (l/min): total de boquillas, o de cada pistola',t:'num',grp:'caudal'},
     {k:'n_boquillas',l:'Nº de boquillas',t:'int',grp:'boq'},{k:'velocidad_kmh',l:'Velocidad habitual (km/h)',t:'num',grp:'boq'},{k:'presion_bar',l:'Presión habitual (bar)',t:'num',grp:'caudal'},
-    {k:'roma',l:'Nº inscripción ROMA',grp:'roma',adv:1},{k:'fecha_inspeccion',l:'Última inspección (ITEAF)',t:'date',grp:'roma',adv:1,help:'Se pasa cada 3 años; la app te avisa'},
+    {k:'roma',l:'Nº inscripción ROMA',grp:'roma',adv:1},
     {k:'fecha_compra',l:'Fecha de compra',t:'date',adv:1},{k:'precio_compra',l:'Precio de compra (€)',t:'num',adv:1},
     {k:'anos_amortizacion',l:'Años para amortizar',t:'int',adv:1,help:'0 = no amortizar. El coste anual se reparte como gasto común.'},
     {k:'activa',l:'En uso',t:'bool',def:true,adv:1},{k:'notas',l:'Notas',t:'area',adv:1}]},
@@ -705,7 +707,7 @@ function abrir(k, reg=null, ini=null){
   if(k==='maquinas') fotosMaq(reg);
   if(k==='maquinas'){
     const tog=()=>{ const t=$('#frm [name=tipo]').value; const veh=TIPOS_VEH.includes(t)||(!t&&(r.matricula||r.itv_proxima)), apl=TIPOS_APL.includes(t);
-      const vis={veh, apl, pist:t==='Cuba de pistolas', barra:t==='Cuba con barra (herbicida)', caudal:['Atomizador','Cuba de pistolas','Cuba con barra (herbicida)'].includes(t), boq:['Atomizador','Cuba con barra (herbicida)'].includes(t), roma:apl&&t!=='Mochila'};
+      const vis={veh, apl, pist:t==='Cuba de pistolas', barra:t==='Cuba con barra (herbicida)', caudal:['Atomizador','Cuba de pistolas','Cuba con barra (herbicida)'].includes(t), boq:['Atomizador','Cuba con barra (herbicida)'].includes(t), roma:apl&&t!=='Mochila'}; vis.itv=veh||vis.roma; // atomizador y cubas remolcadas: también ITV, matrícula y seguro
       document.querySelectorAll('#frm [data-grp]').forEach(el=>el.classList.toggle('hidden',!vis[el.dataset.grp])); };
     $('#frm [name=tipo]').addEventListener('change',tog); tog();
   }
@@ -2872,7 +2874,7 @@ function vFichaMaq(m){
     <p class="mut">${esc([m.tipo,[m.marca,m.modelo].filter(Boolean).join(' ')].filter(Boolean).join(' · '))}${m.matricula?' · '+esc(m.matricula):''}${m.num_serie?' · nº '+esc(m.num_serie):''}${m.capacidad_l?' · '+num(m.capacidad_l)+' l':''}</p>
     <div class="row" style="gap:6px;flex-wrap:wrap"><button class="btn sm" onclick="abrirMant('${m.id}')">🔧 Apuntar mantenimiento</button><button class="btn sec sm" onclick="fichaMaquinas(['${m.id}'])">📄 Ficha robo / seguro</button></div>
     <div id="fMaqFotos" class="row" style="gap:6px;flex-wrap:wrap;margin-top:10px"></div></div>
-  <div class="kpis">${m.horas!=null?`<div class="kpi"><span>Horas</span><b>${num(m.horas)}</b></div>`:''}${m.itv_proxima?`<div class="kpi"><span>ITV</span><b style="font-size:15px">${fx(m.itv_proxima)}</b></div>`:''}${m.seguro_vence?`<div class="kpi"><span>Seguro</span><b style="font-size:15px">${fx(m.seguro_vence,1)}</b></div>`:''}${m.precio_compra?`<div class="kpi"><span>Compra</span><b>${eur(m.precio_compra)}</b></div>`:''}</div>
+  <div class="kpis">${m.horas!=null?`<div class="kpi"><span>Horas</span><b>${num(m.horas)}</b></div>`:''}${m.itv_proxima?`<div class="kpi"><span>ITV</span><b style="font-size:15px">${fx(m.itv_proxima)}</b></div>`:''}${esAplicacion(m)&&m.tipo!=='Mochila'&&m.fecha_inspeccion?`<div class="kpi"><span>Próxima ITEAF</span><b style="font-size:15px">${fx(addDias(m.fecha_inspeccion,365*3))}</b></div>`:''}${m.seguro_vence?`<div class="kpi"><span>Seguro</span><b style="font-size:15px">${fx(m.seguro_vence,1)}</b></div>`:''}${m.precio_compra?`<div class="kpi"><span>Compra</span><b>${eur(m.precio_compra)}</b></div>`:''}</div>
   <div class="card"><h2>Mantenimiento<span class="sp"></span><button class="btn sec sm" onclick="actualizarHoras('${m.id}')">⏱ ${m.horas!=null?num(m.horas)+' h':'Poner horas'}</button></h2>
     ${m.horas!=null&&planMaq(m).some(p=>p.h)&&(!m.horas_fecha||difDias(m.horas_fecha,hoy())>30)?`<p class="mut" style="margin-top:0">Horas apuntadas ${m.horas_fecha?'el '+fFecha(m.horas_fecha):'hace tiempo'}: actualízalas (botón ⏱) para que los avisos por horas cuadren.</p>`:''}
     ${E.length?`<table>${E.map(x=>`<tr><td>${esc(x.p.t)}<div class="mut">${x.pasa?`sin apuntar · la máquina ya lleva ${num(m.horas)} h (toca cada ${num(x.p.h)} h): ¿cuándo se hizo?`:x.nunca?'sin apuntar todavía':esc(x.txt)}</div></td><td class="n">${x.pasa?'<span style="color:var(--warn)">¿toca?</span>':x.nunca?'<span class="mut">—</span>':x.pct>=1?'<span class="neg">toca</span>':x.pct>=0.85?'<span style="color:var(--warn)">pronto</span>':'<span class="pos">bien</span>'}</td></tr>`).join('')}</table>`:'<p class="mut">Sin plan de mantenimiento para este tipo.</p>'}
@@ -3824,7 +3826,7 @@ function vMasDentro(){
     return tabs+`<div class="row" style="justify-content:flex-end;gap:6px;flex-wrap:wrap;margin-bottom:8px"><button class="btn sec sm" onclick="fichaMaquinas()">📄 Ficha robo / seguro</button><button class="btn sm" onclick="abrirMant()">🔧 Mantenimiento</button></div>${sinS?`<p class="mut" style="margin:-2px 0 10px">${sinS} ${sinS===1?'máquina':'máquinas'} sin nº de serie ni foto de la placa: ábrelas y apúntalo, por si las roban.</p>`:''}<div class="card"><h2>Vehículos<span class="sp"></span>${nuevo('Tractor','+ Vehículo')}</h2><p class="mut">Los que pasan ITV y llevan seguro: tractor, coche, quad, remolque…</p>
       ${veh.length?`<div class="scroll"><table><tr><th>Nombre</th><th>ITV</th><th>Seguro</th></tr>${veh.map(m=>fila(m,`<td>${fx(m.itv_proxima)}</td><td>${fx(m.seguro_vence)}</td>`)).join('')}</table></div>`:'<p class="mut">Ninguno todavía.</p>'}</div>
     <div class="card"><h2>Para curar y abonar<span class="sp"></span>${nuevo('Atomizador','+ Equipo')}</h2><p class="mut">Atomizador, cuba de pistolas, cuba con barra, mochila, abonadora. Salen al apuntar curaciones y en el cuaderno.</p>
-      ${apl.length?`<table><tr><th>Equipo</th><th class="n">Litros</th><th>Inspección</th></tr>${apl.map(m=>fila(m,`<td class="n">${m.capacidad_l?num(m.capacidad_l):''}${m.n_pistolas?`<div class="mut">${m.n_pistolas} pistolas</div>`:''}${m.ancho_m?`<div class="mut">barra ${num(m.ancho_m,1)} m</div>`:''}</td><td>${m.tipo==='Mochila'?'<span class="mut">no necesita</span>':m.fecha_inspeccion?fx(addDias(m.fecha_inspeccion,365*3)):'<span class="mut">sin fecha</span>'}</td>`)).join('')}</table>`:'<p class="mut">Ninguno todavía.</p>'}</div>
+      ${apl.length?`<table><tr><th>Equipo</th><th class="n">Litros</th><th>ITEAF</th><th>ITV</th></tr>${apl.map(m=>fila(m,`<td class="n">${m.capacidad_l?num(m.capacidad_l):''}${m.n_pistolas?`<div class="mut">${m.n_pistolas} pistolas</div>`:''}${m.ancho_m?`<div class="mut">barra ${num(m.ancho_m,1)} m</div>`:''}</td><td>${m.tipo==='Mochila'?'<span class="mut">no necesita</span>':m.fecha_inspeccion?fx(addDias(m.fecha_inspeccion,365*3)):'<span class="mut">sin fecha</span>'}</td><td>${m.tipo==='Mochila'?'':fx(m.itv_proxima)}</td>`)).join('')}</table><p class="mut">ITEAF: la fecha de la próxima (3 años después de la última). ITV: la que pone la tarjeta.</p>`:'<p class="mut">Ninguno todavía.</p>'}</div>
     <div class="card"><h2>Herramientas y aperos<span class="sp"></span>${nuevo('Desbrozadora de mano','+ Herramienta')}</h2><p class="mut">Desbrozadoras, sopladora, pluma, picadora, vibrador, peine, motosierra…</p>
       ${her.length?`<table>${her.map(m=>fila(m,`<td class="n">${m.precio_compra>0&&m.anos_amortizacion>0?eur(m.precio_compra/m.anos_amortizacion)+'/año':''}</td>`)).join('')}</table>`:'<p class="mut">Ninguna todavía.</p>'}</div>`;
   }
@@ -4239,13 +4241,14 @@ function resumenAnio(y){
 // ITV, seguros, inspección del atomizador y carnés: todo lo que vence, junto y por fecha
 function htmlVencimientos(){ const h=hoy(), L=[], um=AJ.umb.itv_dias||30;
   D.maquinas.filter(m=>m.activa!==false).forEach(m=>{ if(m.itv_proxima) L.push({f:m.itv_proxima,t:'ITV',n:m.nombre,ed:`maquinas:${m.id}`,ren:`renovar('${m.id}','itv_proxima')`}); if(m.seguro_vence) L.push({f:m.seguro_vence,t:'Seguro',n:m.nombre,ed:`maquinas:${m.id}`,ren:`renovar('${m.id}','seguro_vence')`});
-    if(esAplicacion(m)&&m.tipo!=='Mochila'&&m.fecha_inspeccion) L.push({f:addDias(m.fecha_inspeccion,365*3),t:'Inspección del equipo (ITEAF)',n:m.nombre,ed:`maquinas:${m.id}`}); });
+    if(esAplicacion(m)&&m.tipo!=='Mochila'&&m.fecha_inspeccion) L.push({f:addDias(m.fecha_inspeccion,365*3),t:'Inspección del equipo (ITEAF)',n:m.nombre,ed:`maquinas:${m.id}`,ren:`renovar('${m.id}','fecha_inspeccion')`}); });
   carnes().forEach(c=>{ if(c.cad) L.push({f:c.cad,t:'Carné de fitosanitarios',n:c.nombre,ed:c.id?`trabajadores:${c.id}`:null,tit:c.tit}); });
   if(!L.length) return ''; L.sort((a,b)=>a.f.localeCompare(b.f));
   return `<div class="card"><h2>Vencimientos</h2><table>${L.map(x=>{ const d=difDias(h,x.f), col=d<=7?'r':d<=um?'a':'g';
-    return `<tr ${x.ed?`class="click" data-ed="${x.ed}"`:x.tit?'class="click" onclick="abrirDatosCuaderno()"':''}><td>${esc(x.t)}<div class="mut">${esc(x.n)}</div></td><td class="n"><span class="dot ${col}"></span>${d<0?'venció el ':''}${fFecha(x.f)}${x.ren&&d<=um?`<div><button class="btn sec sm" onclick="event.stopPropagation();${x.ren}">Renovado hoy</button></div>`:''}</td></tr>`; }).join('')}</table><p class="mut">Toca cada uno para ver o cambiar la fecha. «Renovado hoy» lo pone dentro de un año.</p></div>`; }
-async function renovar(mid,k){ const m=D.maquinas.find(x=>x.id===mid); if(!m) return; const nueva=addDias(hoy(),365);
-  if(!confirm(`¿${k==='itv_proxima'?'ITV pasada':'Seguro renovado'} hoy? La próxima vez será el ${fFecha(nueva)} (si no es así, cámbialo en la máquina).`)) return;
+    return `<tr ${x.ed?`class="click" data-ed="${x.ed}"`:x.tit?'class="click" onclick="abrirDatosCuaderno()"':''}><td>${esc(x.t)}<div class="mut">${esc(x.n)}</div></td><td class="n"><span class="dot ${col}"></span>${d<0?'venció el ':''}${fFecha(x.f)}${x.ren&&d<=um?`<div><button class="btn sec sm" onclick="event.stopPropagation();${x.ren}">Renovado hoy</button></div>`:''}</td></tr>`; }).join('')}</table><p class="mut">Toca cada uno para ver o cambiar la fecha. «Renovado hoy» pone la ITV dentro de 2 años, el seguro dentro de uno y la ITEAF dentro de 3.</p></div>`; }
+async function renovar(mid,k){ const m=D.maquinas.find(x=>x.id===mid); if(!m) return;
+  const iteaf=k==='fecha_inspeccion', nueva=iteaf?hoy():addDias(hoy(),k==='itv_proxima'?730:365), prox=iteaf?addDias(nueva,365*3):nueva;
+  if(!confirm(`¿${k==='itv_proxima'?'ITV pasada':iteaf?'ITEAF pasada':'Seguro renovado'} hoy? La próxima vez será el ${fFecha(prox)} (si no es así, cámbialo en la máquina).`)) return;
   const {error}=await sb.from('olv_maquinas').update({[k]:nueva}).eq('id',mid); if(error){ if(!sinRed(error)) toast('Error: '+error.message); return; } await cargar('maquinas',[mid]); render(); toast('Apuntado'); }
 function vPapeles(){
   fab(null);
