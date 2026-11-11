@@ -111,6 +111,7 @@ dialog h3{margin:0 0 12px}
 .chip{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:18px;padding:8px 13px;font:inherit;font-size:14px;cursor:pointer;min-height:38px}
 .chips.scrollx{flex-wrap:nowrap;overflow-x:auto;margin:0 0 8px;padding-bottom:2px;scrollbar-width:none}.chips.scrollx::-webkit-scrollbar{display:none}.chips.scrollx .chip{flex:none;min-height:34px;padding:6px 12px}
 .chip.on{background:var(--olv);border-color:var(--olv);color:#fff;font-weight:600}
+.chips.mini{margin:0;gap:4px}.chips.mini .chip{padding:4px 7px;min-height:32px;font-size:13px}
 @media (prefers-color-scheme:dark){.chip.on{color:#171a13}}
 .clab{font-size:13px;color:var(--mut);display:block}
 .big{font-size:26px!important;font-weight:700;padding:10px!important}
@@ -183,7 +184,7 @@ details.adv{margin:4px 0 10px}details.adv summary{cursor:pointer;color:var(--olv
 
 <script>
 // ===== Configuración =====
-const VERSION = '3.50';
+const VERSION = '3.51';
 const VERSION_FECHA = '3 nov 2026';
 const CREDITOS = `Olivas v${VERSION} (${VERSION_FECHA}) · © 2026 Alfonso Carrascosa Martínez · Hecha con Claude (Anthropic)`;
 const SUPA_URL = 'https://kseyndjbmkaflpoqitsj.supabase.co';
@@ -2304,6 +2305,45 @@ const claveMezcla=noms=>noms.map(n=>buscaAlm(n,true)?.id||normProd(n)).filter(Bo
 function aplicacionesRecientes(){ const vistas=new Set(), out=[];
   for(const a of [...D.aplicaciones].sort((a,b)=>b.fecha.localeCompare(a.fecha))){ const k=claveMezcla(D.tratamientos.filter(t=>t.aplicacion_id===a.id).map(t=>t.producto)); if(k&&vistas.has(k)) continue; if(k) vistas.add(k); out.push(a); if(out.length===5) break; }
   return out; }
+// ===== Selector de productos (sustituye a la lista nativa, que en el móvil se solapa dentro de la ventana) =====
+// Color y abreviatura por tipo de producto
+const TIPO_COL={'Fungicida':['#2e7bbf','Fung.'],'Insecticida':['#c0392b','Insect.'],'Herbicida':['#c58a0b','Herb.'],'Reductor de pH / mojante':['#8a5bc5','pH/moj.'],'Abono foliar':['#2a8d48','Ab. fol.'],'Abono de suelo':['#8b6a3e','Ab. suelo'],'Aminoácidos / bioestimulante':['#1a998a','Amino.']};
+const MOTIVO_TIPO={Repilo:'Fungicida',Mosca:'Insecticida',Prays:'Insecticida','Abono foliar':'Abono foliar','Aminoácidos':'Aminoácidos / bioestimulante','Abonado al suelo':'Abono de suelo',Herbicida:'Herbicida'};
+// «Herbolex E-30 20 L» → «Herbolex E-30» (el tamaño del envase sobra al elegir)
+const cortoProd=n=>String(n||'').replace(/\s+\d+(?:[.,]\d+)?\s*(?:kg|l|lt|litros?|g|gr|cc|ml)\.?\s*$/i,'').trim();
+const tipoDeProd=n=>buscaAlm(n,true)?.tipo||null;
+function opcionesProd(){ const alm=D.almacen.filter(a=>a.activo!==false);
+  const extra=[...new Set(D.tratamientos.map(t=>t.producto).filter(Boolean))].filter(n=>!buscaAlm(n)).map(n=>({nombre:n,tipo:null}));
+  return [...alm,...extra]; }
+function pickerProd(F, motivo){
+  (F._pk||[]).forEach(([t,h])=>F.removeEventListener(t,h));
+  const esP=el=>/^pr_\d+$/.test(el?.name||'');
+  const pinta=inp=>{ const box=F.querySelector(`#sg_${inp.name.slice(3)}`); if(!box) return;
+    const q=normProd(inp.value), foco=document.activeElement===inp;
+    if(q&&!foco){ box.innerHTML=''; return; }
+    const otros=new Set([...F.querySelectorAll('input[name^=pr_]')].filter(x=>x!==inp).map(x=>normProd(x.value)).filter(Boolean));
+    let L=opcionesProd().filter(a=>!otros.has(normProd(a.nombre)));
+    if(q){ const ws=q.split(' '); L=L.filter(a=>{ const n=normProd(`${a.nombre} ${a.tipo||''} ${(TIPO_COL[a.tipo]||[])[1]||''}`); return ws.every(w=>n.includes(w)); }); }
+    const mt=MOTIVO_TIPO[motivo?.()||''], ord=a=>a.tipo&&a.tipo===mt?0:a.tipo==='Reductor de pH / mojante'?1:a.tipo?2:3;
+    L.sort((a,b)=>ord(a)-ord(b)||(a.tipo||'').localeCompare(b.tipo||'')||a.nombre.localeCompare(b.nombre));
+    box.innerHTML = L.length ? `<div class="chips" style="margin:6px 0 4px">${L.map(a=>{ const c=TIPO_COL[a.tipo]||['var(--line)',''], sin=a.cantidad!=null&&Number(a.cantidad)<=0;
+        return `<button type="button" class="chip" style="border-left:5px solid ${c[0]};padding:6px 10px;min-height:34px;${sin?'opacity:.55':''}" data-pn="${esc(a.nombre)}">${c[1]?`<small style="color:${c[0]};font-weight:600">${c[1]}</small> `:''}${esc(cortoProd(a.nombre))}${a.cantidad!=null?` <small class="${sin?'neg':'mut'}">${num(a.cantidad,1)} ${esc(a.unidad||'')}</small>`:''}</button>`; }).join('')}</div>`
+      : q ? '<p class="mut" style="margin:4px 0">No está en el almacén: se apunta tal cual.</p>' : ''; };
+  const H=[['focusin',e=>{ if(esP(e.target)) pinta(e.target); }],
+    ['input',e=>{ if(esP(e.target)) pinta(e.target); }],
+    ['focusout',e=>{ if(esP(e.target)) setTimeout(()=>pinta(e.target),200); }],
+    ['pointerdown',e=>{ if(e.target.closest('[data-pn]')) e.preventDefault(); }],
+    ['click',e=>{ const b=e.target.closest('[data-pn]'); if(!b) return; const box=b.closest('[id^=sg_]'), inp=F.querySelector(`[name=pr_${box.id.slice(3)}]`); if(!inp) return;
+      inp.value=b.dataset.pn; box.innerHTML=''; inp.blur(); inp.dispatchEvent(new Event('change',{bubbles:true})); todos(); }]];
+  H.forEach(([t,h])=>F.addEventListener(t,h)); F._pk=H;
+  const todos=()=>F.querySelectorAll('input[name^=pr_]').forEach(pinta);
+  todos(); return todos;
+}
+// Pone la dosis y el nº de registro del almacén en una línea de producto, si están vacíos
+function dosisLinea(F,i){ const pr=F[`pr_${i}`]; if(!pr||!pr.value.trim()) return; const x=dosisDeAlm(pr.value); if(!x) return;
+  if(x.valor&&F[`dv_${i}`]&&!F[`dv_${i}`].value){ F[`dv_${i}`].value=String(x.valor).replace('.',','); F[`du_${i}`].value=x.unidad; F.querySelector(`[data-chips="du_${i}"]`)?.querySelectorAll('.chip').forEach(b=>b.classList.toggle('on',b.dataset.val===x.unidad)); toast(`Dosis de ${cortoProd(x.a.nombre)} puesta (la de ${x.de==='tienda'?'la tienda':'la etiqueta'})`); }
+  if(x.a.num_registro&&F[`nr_${i}`]&&!F[`nr_${i}`].value) F[`nr_${i}`].value=x.a.num_registro; }
+const puntoTipo=n=>{ const c=TIPO_COL[tipoDeProd(n)]; return c?`<span class="dot" style="background:${c[0]}"></span>`:''; };
 function cubaIgual(productos,exceptoId){ const k=claveMezcla(productos.map(p=>p.producto)); return cubasEstandar().find(c=>c.id!==exceptoId&&claveMezcla((c.productos||[]).map(p=>p.producto))===k); }
 function abrirAplicacion(apl=null, cubaId=null){
   const at=atomizadores(), ult=ULT.apl||{};
@@ -2314,26 +2354,26 @@ function abrirAplicacion(apl=null, cubaId=null){
   const cubaIni = cubaId ? cubasEstandar().find(x=>x.id===cubaId) : null;
   if(cubaIni) v.motivo=cubaIni.motivo||'';
   const lineas = prods.length ? prods.map(t=>({producto:t.producto,num_registro:t.num_registro,valor:t.dosis_valor,unidad:t.dosis_unidad||'g/100L',plazo:t.plazo_seguridad_dias,clase:t.clase,riqueza:t.riqueza})) : cubaIni ? cubaIni.productos.map(p=>({...p})) : [{producto:'',valor:'',unidad:'g/100L',plazo:''}];
-  const nombres=[...new Set([...D.almacen.filter(a=>a.activo!==false).map(a=>a.nombre),...D.tratamientos.map(t=>t.producto)].filter(Boolean))].slice(0,80);
-  const chips=(name,ops,val)=>`<div class="chips" data-chips="${name}">${ops.map(([x,t])=>`<button type="button" class="chip ${String(val)===String(x)?'on':''}" data-val="${esc(x)}">${esc(t)}</button>`).join('')}</div><input type="hidden" name="${name}" value="${esc(val)}">`;
-  const lin=(l,i)=>`<div class="lab" data-pl="${i}"><div class="row" style="flex-wrap:nowrap"><input name="pr_${i}" list="dlProd" placeholder="Producto" value="${esc(l.producto||'')}" style="flex:1"><button type="button" class="btn del sm" data-qp="${i}">✕</button></div>
-     <div class="grid2" style="grid-template-columns:1fr 1fr;margin-top:6px"><label>Dosis<input name="dv_${i}" inputmode="decimal" value="${l.valor!=null?String(l.valor).replace('.',','):''}"></label><label>Plazo seguridad (días)<input name="ps_${i}" inputmode="numeric" value="${esc(l.plazo??'')}"></label></div>
-     ${chips('du_'+i, DOSIS_U, l.unidad||'g/100L')}
-     ${chips('cl_'+i, [['fito','Fitosanitario'],['abono','Abono / bioestimulante']], l.clase || (esAbono({producto:l.producto||'',motivo:v.motivo})?'abono':'fito'))}
-     <div class="grid2" style="grid-template-columns:1fr 1fr"><label>Nº registro<input name="nr_${i}" value="${esc(l.num_registro||'')}"></label><label>Riqueza N-P-K (abonos)<input name="rq_${i}" value="${esc(l.riqueza||'')}" placeholder="15-15-15"></label></div>
-     <div class="mut" id="res_${i}"></div></div>`;
+  const chips=(name,ops,val,cls='')=>`<div class="chips ${cls}" data-chips="${name}">${ops.map(([x,t])=>`<button type="button" class="chip ${String(val)===String(x)?'on':''}" data-val="${esc(x)}">${esc(t)}</button>`).join('')}</div><input type="hidden" name="${name}" value="${esc(val)}">`;
+  // Cada producto: nombre, dosis y unidad a la vista; plazo, registro, clase y riqueza plegados (se rellenan del almacén)
+  const lin=(l,i)=>`<div class="lab" data-pl="${i}"><div class="row" style="flex-wrap:nowrap"><input name="pr_${i}" autocomplete="off" placeholder="Producto: toca uno o escribe" value="${esc(l.producto||'')}" style="flex:1"><button type="button" class="btn del sm" data-qp="${i}" title="Quitar">✕</button></div>
+     <div id="sg_${i}"></div>
+     <div class="row" style="flex-wrap:nowrap;align-items:flex-start;gap:8px;margin-top:6px"><input name="dv_${i}" inputmode="decimal" placeholder="Dosis" aria-label="Dosis" style="width:64px;flex:none" value="${l.valor!=null?String(l.valor).replace('.',','):''}"><div style="min-width:0;flex:1">${chips('du_'+i, DOSIS_U.map(([k])=>[k,k]), l.unidad||'g/100L','mini')}</div></div>
+     <div class="mut" id="res_${i}"></div>
+     <details class="adv" style="margin:2px 0 0"><summary style="font-size:13px;margin:0">Plazo${l.plazo?` ${esc(l.plazo)} d`:''}, nº reg.${l.num_registro?` ${esc(l.num_registro)}`:''} y tipo</summary>
+     <div class="grid2" style="grid-template-columns:1fr 1fr;margin-top:6px"><label>Plazo seguridad (días)<input name="ps_${i}" inputmode="numeric" value="${esc(l.plazo??'')}"></label><label>Nº registro<input name="nr_${i}" value="${esc(l.num_registro||'')}"></label></div>
+     ${chips('cl_'+i, [['fito','Fitosanitario'],['abono','Abono / bioest.']], l.clase || (esAbono({producto:l.producto||'',motivo:v.motivo})?'abono':'fito'))}
+     <label>Riqueza N-P-K (abonos)<input name="rq_${i}" value="${esc(l.riqueza||'')}" placeholder="15-15-15"></label></details></div>`;
   const rec=apl?[]:aplicacionesRecientes();
   $('#frm').oninput=null; $('#frm').onchange=null;
   $('#frm').innerHTML=`<h3>${apl?'Editar':'Apuntar'} curación</h3>
-    ${!apl&&cubasEstandar().length?`<span class="clab">Cubas estándar</span><div class="chips">${cubasEstandar().map(c=>`<button type="button" class="chip ${c.id===cubaId?'on':''}" data-cub="${c.id}">${esc(c.nombre)}</button>`).join('')}</div>`:''}
-    ${rec.length?`<span class="clab">Repetir caldo anterior</span><div class="chips">${rec.map(a=>`<button type="button" class="chip" data-rep="${a.id}">${esc(D.tratamientos.filter(t=>t.aplicacion_id===a.id).map(t=>t.producto).join(' + ')||fFecha(a.fecha))}</button>`).join('')}</div>`:''}
+    ${!apl?`<span class="clab">⭐ Mis cubas: toca una y se rellena</span><div class="chips">${cubasEstandar().map(c=>`<button type="button" class="chip ${c.id===cubaId?'on':''}" data-cub="${c.id}" style="font-weight:600">⭐ ${esc(c.nombre)}</button>`).join('')}${rec.map(a=>`<button type="button" class="chip" data-rep="${a.id}" title="Repetir la del ${fFecha(a.fecha)}">↻ ${esc(D.tratamientos.filter(t=>t.aplicacion_id===a.id).map(t=>cortoProd(t.producto)).join(' + ')||fFecha(a.fecha))}</button>`).join('')}${!cubasEstandar().length&&!rec.length?'<span class="mut">Aún no hay. Elige los productos y pulsa «⭐ Guardar como mi cuba».</span>':''}</div>`:''}
     <span class="clab">Finca</span>${chips('finca_id', D.fincas.filter(f=>f.activa).map(f=>[f.id,f.nombre]), v.finca_id)}
     ${at.length?`<span class="clab">Equipo</span>${chips('maquina_id', at.map(m=>[m.id,m.nombre]), v.maquina_id)}`:'<input type="hidden" name="maquina_id" value="">'}
     <div class="grid2"><label>Cuba o mochila (litros)<input name="cuba_l" inputmode="decimal" value="${esc(v.cuba_l)}"></label><label>Nº de cubas o mochilas<input name="n_cubas" inputmode="decimal" value="${String(v.n_cubas).replace('.',',')}"></label></div>
     <div class="chips" style="margin-top:-6px">${[1,2,3,4,5,6].map(n=>`<button type="button" class="chip" data-nc="${n}">${n}</button>`).join('')}</div>
     <span class="clab">Productos en la cuba</span><div id="aLin">${lineas.map(lin).join('')}</div>
-    <div class="row" style="margin-bottom:10px"><button type="button" class="btn sec sm" id="aMas">+ Otro producto</button><button type="button" class="btn sec sm" id="aGuardarCuba">Guardar como cuba estándar</button></div>
-    <datalist id="dlProd">${nombres.map(n=>`<option value="${esc(n)}">`).join('')}</datalist>
+    <div class="row" style="margin-bottom:10px"><button type="button" class="btn sec sm" id="aMas">+ Otro producto</button><button type="button" class="btn sec sm" id="aGuardarCuba">⭐ Guardar como mi cuba</button></div>
     <div id="aRes" class="aviso ok"></div>
     <div id="aTiempo"></div>
     <div id="aMez"></div>
@@ -2379,35 +2419,37 @@ function abrirAplicacion(apl=null, cubaId=null){
     if(f&&!(f.cubas_copa>0)&&tot) $('#aRes').innerHTML+=`<br><span class="mut">Pon en la finca cuántas cubas gastas y la próxima vez se rellena solo.</span>`;
     $('#aMez').innerHTML=htmlMezcla(vivas().map(i=>F[`pr_${i}`]?.value.trim()));
   };
-  const deAlm=(i)=>{ const pr=F[`pr_${i}`]; if(!pr||!pr.value.trim()) return; const x=dosisDeAlm(pr.value); if(!x) return;
-    if(x.valor&&!F[`dv_${i}`].value){ F[`dv_${i}`].value=String(x.valor).replace('.',','); const g=F.querySelector(`[data-chips="du_${i}"]`); F[`du_${i}`].value=x.unidad; g?.querySelectorAll('.chip').forEach(b=>b.classList.toggle('on',b.dataset.val===x.unidad)); toast(`Dosis de ${x.a.nombre} puesta (la de ${x.de==='tienda'?'la tienda':'la etiqueta'})`); }
-    if(x.a.num_registro&&!F[`nr_${i}`].value) F[`nr_${i}`].value=x.a.num_registro; };
+  // al elegir el producto: su dosis del almacén y, si aún no hay «para qué», el que le toca por su tipo (herbicida → Herbicida…)
+  const motivoDeTipo=nom=>{ if(F.motivo.value) return; const t=tipoDeProd(nom), mo=t==='Herbicida'?'Herbicida':t==='Abono foliar'?'Abono foliar':t==='Abono de suelo'?'Abonado al suelo':t==='Aminoácidos / bioestimulante'?'Aminoácidos':null;
+    if(mo) F.querySelector(`[data-chips=motivo] .chip[data-val="${mo}"]`)?.click(); };
+  const deAlm=(i)=>{ dosisLinea(F,i); const nom=F[`pr_${i}`]?.value.trim(); if(nom) motivoDeTipo(nom); };
   let ncTocado=!!apl;
   const ncFinca=()=>{ if(ncTocado) return; const f=fincaSel(), herb=F.motivo.value==='Herbicida', n=Number(herb?f?.cubas_suelo:f?.cubas_copa); if(n>0) F.n_cubas.value=String(n).replace('.',','); };
+  const pintaProd=pickerProd(F,()=>F.motivo.value);
   F.oninput=e=>{ if(e.target?.name==='n_cubas') ncTocado=true; calc(); };
-  F.onchange=e=>{ const nm=e.target?.name||''; const m=/^pr_(\d+)$/.exec(nm); if(m) deAlm(+m[1]); if(nm==='finca_id'||nm==='motivo') ncFinca(); calc(); };
+  F.onchange=e=>{ const nm=e.target?.name||''; const m=/^pr_(\d+)$/.exec(nm); if(m) deAlm(+m[1]); if(nm==='finca_id'||nm==='motivo') ncFinca(); if(nm==='motivo') pintaProd(); calc(); };
   F.querySelectorAll('[data-nc]').forEach(b=>b.onclick=()=>{ ncTocado=true; F.n_cubas.value=b.dataset.nc; calc(); });
   ncFinca();
-  const quitar=()=>F.querySelectorAll('[data-qp]').forEach(b=>b.onclick=()=>{ if(vivas().length>1){ b.closest('[data-pl]').remove(); calc(); } });
+  const quitar=()=>F.querySelectorAll('[data-qp]').forEach(b=>b.onclick=()=>{ if(vivas().length>1){ b.closest('[data-pl]').remove(); pintaProd(); calc(); } else { const i=b.dataset.qp; F[`pr_${i}`].value=''; F[`dv_${i}`].value=''; pintaProd(); calc(); } });
   quitar();
-  $('#aMas').onclick=()=>{ $('#aLin').insertAdjacentHTML('beforeend',lin({producto:'',valor:'',unidad:'g/100L',plazo:''},nl)); activarChips($(`[data-pl="${nl}"]`)); nl++; quitar(); calc(); F.querySelector(`[name=pr_${nl-1}]`).focus(); };
+  $('#aMas').onclick=()=>{ $('#aLin').insertAdjacentHTML('beforeend',lin({producto:'',valor:'',unidad:'g/100L',plazo:''},nl)); activarChips($(`[data-pl="${nl}"]`)); nl++; quitar(); pintaProd(); calc(); if(!TACTIL) F.querySelector(`[name=pr_${nl-1}]`).focus(); };
   F.querySelectorAll('[data-chips=maquina_id] .chip').forEach(b=>b.addEventListener('click',()=>{ const m=D.maquinas.find(x=>x.id===b.dataset.val); if(m?.capacidad_l) F.cuba_l.value=String(m.capacidad_l).replace('.',','); if(m?.velocidad_kmh&&!F.velocidad_kmh.value) F.velocidad_kmh.value=m.velocidad_kmh; calc(); }));
   F.querySelectorAll('[data-cub]').forEach(b=>b.onclick=()=>{
     const cu=cubasEstandar().find(x=>x.id===b.dataset.cub); if(!cu) return;
-    $('#aLin').innerHTML=cu.productos.map((p,i)=>lin({...p},i)).join(''); nl=cu.productos.length; activarChips($('#aLin')); quitar();
+    $('#aLin').innerHTML=cu.productos.map((p,i)=>lin({...p},i)).join(''); nl=cu.productos.length; activarChips($('#aLin')); quitar(); pintaProd();
     const mo=F.querySelector(`[data-chips=motivo] .chip[data-val="${cu.motivo||''}"]`); if(mo) mo.click();
     F.querySelectorAll('[data-cub],[data-rep]').forEach(x=>x.classList.toggle('on',x===b)); calc(); });
   $('#aGuardarCuba').onclick=()=>{
     const productos=vivas().map(i=>({producto:F[`pr_${i}`].value.trim(), valor:pn(F[`dv_${i}`].value), unidad:F[`du_${i}`].value, plazo:pn(F[`ps_${i}`].value), num_registro:F[`nr_${i}`].value.trim()||null, clase:F[`cl_${i}`]?.value||null, riqueza:F[`rq_${i}`]?.value.trim()||null})).filter(x=>x.producto);
     if(!productos.length){ toast('Pon antes algún producto'); return; }
     const ya=cubaIgual(productos); if(ya&&!confirm(`Ya tienes la cuba «${ya.nombre}» con estos productos. ¿Guardar otra?`)) return;
-    const nombre=(prompt('Nombre de esta cuba estándar (p. ej. «Cobre de otoño»):')||'').trim(); if(!nombre) return;
+    const nombre=(prompt('Nombre de esta cuba (p. ej. «Cobre de otoño»):')||'').trim(); if(!nombre) return;
     AJ.cubas=[...cubasEstandar(),{id:'c_'+Date.now(), nombre, motivo:F.motivo.value||'', productos}];
     guardarAjustes().then(()=>toast(`Cuba «${nombre}» guardada; sigue apuntando la curación`)); };
   F.querySelectorAll('[data-rep]').forEach(b=>b.onclick=()=>{
     const a=D.aplicaciones.find(x=>x.id===b.dataset.rep); const ps=D.tratamientos.filter(t=>t.aplicacion_id===a.id);
     $('#aLin').innerHTML=ps.map((t,i)=>lin({producto:t.producto,num_registro:t.num_registro,valor:t.dosis_valor,unidad:t.dosis_unidad||'g/100L',plazo:t.plazo_seguridad_dias,clase:t.clase,riqueza:t.riqueza},i)).join(''); nl=ps.length;
-    activarChips($('#aLin')); quitar();
+    activarChips($('#aLin')); quitar(); pintaProd();
     if(a.cuba_l) F.cuba_l.value=String(a.cuba_l).replace('.',','); if(a.n_cubas) F.n_cubas.value=String(a.n_cubas).replace('.',',');
     const mc=F.querySelector(`[data-chips=maquina_id] .chip[data-val="${a.maquina_id}"]`); if(mc) mc.click();
     const mo=F.querySelector(`[data-chips=motivo] .chip[data-val="${ps[0]?.motivo||''}"]`); if(mo) mo.click();
@@ -2450,25 +2492,26 @@ function abrirAplicacion(apl=null, cubaId=null){
 function cubasEstandar(){ return AJ.cubas||[]; }
 function editarCuba(id, base){
   const c = id ? cubasEstandar().find(x=>x.id===id) : (base||{nombre:'',motivo:'',productos:[{producto:'',valor:'',unidad:'g/100L',plazo:''}]});
-  const nombres=[...new Set(D.tratamientos.map(t=>t.producto).filter(Boolean))].slice(0,60);
-  const chips=(name,ops,val)=>`<div class="chips" data-chips="${name}">${ops.map(([x,t])=>`<button type="button" class="chip ${String(val)===String(x)?'on':''}" data-val="${esc(x)}">${esc(t)}</button>`).join('')}</div><input type="hidden" name="${name}" value="${esc(val??'')}">`;
-  const lin=(l,i)=>`<div class="lab" data-pl="${i}"><div class="row" style="flex-wrap:nowrap"><input name="pr_${i}" list="dlProd2" placeholder="Producto (con su marca si quieres)" value="${esc(l.producto||'')}" style="flex:1"><button type="button" class="btn del sm" data-qp="${i}">✕</button></div>
-     <div class="grid2" style="grid-template-columns:1fr 1fr;margin-top:6px"><label>Dosis<input name="dv_${i}" inputmode="decimal" value="${l.valor!=null&&l.valor!==''?String(l.valor).replace('.',','):''}"></label><label>Plazo seguridad (días)<input name="ps_${i}" inputmode="numeric" value="${esc(l.plazo??'')}"></label></div>
-     ${chips('du_'+i, DOSIS_U, l.unidad||'g/100L')}</div>`;
+  const chips=(name,ops,val,cls='')=>`<div class="chips ${cls}" data-chips="${name}">${ops.map(([x,t])=>`<button type="button" class="chip ${String(val)===String(x)?'on':''}" data-val="${esc(x)}">${esc(t)}</button>`).join('')}</div><input type="hidden" name="${name}" value="${esc(val??'')}">`;
+  const lin=(l,i)=>`<div class="lab" data-pl="${i}"><div class="row" style="flex-wrap:nowrap"><input name="pr_${i}" autocomplete="off" placeholder="Producto: toca uno o escribe" value="${esc(l.producto||'')}" style="flex:1"><button type="button" class="btn del sm" data-qp="${i}" title="Quitar">✕</button></div>
+     <div id="sg_${i}"></div>
+     <div class="row" style="flex-wrap:nowrap;align-items:flex-start;gap:8px;margin-top:6px"><input name="dv_${i}" inputmode="decimal" placeholder="Dosis" aria-label="Dosis" style="width:64px;flex:none" value="${l.valor!=null&&l.valor!==''?String(l.valor).replace('.',','):''}"><div style="min-width:0;flex:1">${chips('du_'+i, DOSIS_U.map(([k])=>[k,k]), l.unidad||'g/100L','mini')}</div></div>
+     <label style="margin-top:4px">Plazo seguridad (días)<input name="ps_${i}" inputmode="numeric" value="${esc(l.plazo??'')}"></label></div>`;
   $('#frm').oninput=null; $('#frm').onchange=null;
-  $('#frm').innerHTML=`<h3>${id?'Editar':'Nueva'} cuba estándar</h3>
-    <label>Nombre<input name="nombre" value="${esc(c.nombre||'')}" placeholder="p. ej. Cobre de otoño, Abono + aminoácidos…"></label>
+  $('#frm').innerHTML=`<h3>${id?'Editar':'Nueva'} cuba</h3>
+    <label>Nombre<input name="nombre" value="${esc(c.nombre||'')}" placeholder="p. ej. Cobre de otoño, Herbicida, Abono + aminoácidos…"></label>
     <span class="clab">Para qué</span>${chips('motivo', MOTIVOS_APL.map(x=>[x,x]), c.motivo||'')}
-    <span class="clab">Productos</span><div id="cLin">${(c.productos||[]).map(lin).join('')}</div>
+    <span class="clab">Productos (salen todos los del almacén)</span><div id="cLin">${(c.productos||[]).map(lin).join('')}</div>
     <button type="button" class="btn sec sm" id="cMas" style="margin-bottom:10px">+ Otro producto</button>
-    <datalist id="dlProd2">${nombres.map(n=>`<option value="${esc(n)}">`).join('')}</datalist>
-    <p class="mut">La dosis de cada producto es la de su etiqueta. Al usar la cuba se calcula lo que va en cada carga.</p>
+    <p class="mut">Si el producto tiene dosis en el almacén se pone sola. Al usar la cuba se calcula lo que va en cada carga.</p>
     <div class="row acciones" style="justify-content:space-between"><div>${id?'<button type="button" class="btn del" id="cDel">Borrar</button>':''}</div><div class="row"><button type="button" class="btn sec" id="fCancel">Cancelar</button><button class="btn" id="fOk">Guardar</button></div></div>`;
   const F=$('#frm'); activarChips(F);
   let nl=(c.productos||[]).length;
-  const quitar=()=>F.querySelectorAll('[data-qp]').forEach(b=>b.onclick=()=>{ if(F.querySelectorAll('[data-pl]').length>1) b.closest('[data-pl]').remove(); });
+  const pintaProd=pickerProd(F,()=>F.motivo.value);
+  F.onchange=e=>{ const nm=e.target?.name||'', m=/^pr_(\d+)$/.exec(nm); if(m) dosisLinea(F,+m[1]); if(nm==='motivo') pintaProd(); };
+  const quitar=()=>F.querySelectorAll('[data-qp]').forEach(b=>b.onclick=()=>{ if(F.querySelectorAll('[data-pl]').length>1) b.closest('[data-pl]').remove(); else { F[`pr_${b.dataset.qp}`].value=''; F[`dv_${b.dataset.qp}`].value=''; } pintaProd(); });
   quitar();
-  $('#cMas').onclick=()=>{ $('#cLin').insertAdjacentHTML('beforeend',lin({},nl)); activarChips($(`[data-pl="${nl}"]`)); F.querySelector(`[name=pr_${nl}]`).focus(); nl++; quitar(); };
+  $('#cMas').onclick=()=>{ $('#cLin').insertAdjacentHTML('beforeend',lin({},nl)); activarChips($(`[data-pl="${nl}"]`)); if(!TACTIL) F.querySelector(`[name=pr_${nl}]`).focus(); nl++; quitar(); pintaProd(); };
   $('#fCancel').onclick=()=>$('#dlg').close();
   if(id) $('#cDel').onclick=async()=>{ if(!confirm('¿Borrar esta cuba estándar?')) return; AJ.cubas=cubasEstandar().filter(x=>x.id!==id); $('#dlg').close(); await guardarAjustes(); render(); };
   F.onsubmit=async e=>{ e.preventDefault();
@@ -2483,10 +2526,11 @@ function editarCuba(id, base){
 }
 function htmlCubas(){
   const l=cubasEstandar();
-  return `<div class="card"><h2>Cubas estándar<span class="sp"></span><button class="btn sec sm" onclick="editarCuba()">+ Nueva</button></h2>
-    ${l.length?l.map(c=>`<div class="lab click" onclick="editarCuba('${c.id}')"><div class="row" style="flex-wrap:nowrap"><b style="flex:1">${esc(c.nombre)}</b>${c.motivo?`<span class="tag">${esc(c.motivo)}</span>`:''}</div><div class="mut">${c.productos.map(p=>`${esc(p.producto)} ${p.valor!=null?nn(p.valor)+' '+esc((DOSIS_U.find(d=>d[0]===p.unidad)||[0,p.unidad])[1]):''}`).join(' + ')}</div>
-      <div class="row" style="margin-top:6px"><button class="btn sm" onclick="event.stopPropagation();abrirAplicacion(null,'${c.id}')">Usar ahora</button></div></div>`).join('')
-    :'<p class="mut">Guarda aquí tus mezclas de siempre (p. ej. «Cobre de otoño» o «Abono + aminoácidos») y al apuntar una curación se rellenan con un toque.</p>'}</div>`;
+  return `<div class="card"><h2>⭐ Mis cubas<span class="sp"></span><button class="btn sec sm" onclick="editarCuba()">+ Nueva</button></h2>
+    ${l.length?l.map(c=>`<div class="lab"><div class="row" style="flex-wrap:nowrap;align-items:center;gap:8px"><div class="click" style="flex:1;min-width:0" onclick="editarCuba('${c.id}')" title="Cambiar esta cuba"><b>${esc(c.nombre)}</b>${c.motivo?` <span class="tag">${esc(c.motivo)}</span>`:''} <span class="mut" style="font-size:12px">✏️</span>
+        <div class="mut">${c.productos.map(p=>`${puntoTipo(p.producto)}${esc(cortoProd(p.producto))}${p.valor!=null&&p.valor!==''?` <b>${nn(p.valor)}</b> ${esc((DOSIS_U.find(d=>d[0]===p.unidad)||[0,p.unidad])[1])}`:''}`).join(' · ')}</div></div>
+      <button class="btn sm" style="flex:none" onclick="abrirAplicacion(null,'${c.id}')">💧 Usar</button></div></div>`).join('')
+    :'<p class="mut">Guarda aquí tus mezclas de siempre (p. ej. «Cobre de otoño» o «Herbicida») y al apuntar una curación se rellenan con un toque.</p>'}</div>`;
 }
 
 function htmlTratamientos(){
@@ -3103,7 +3147,7 @@ const MAPA=[
   ['Algodoncillo: muestreo y umbral','Campo → Muestras → Algodoncillo',"abrirAlgodoncillo()"],
   ['DAT para llevar la aceituna a la almazara','Cuentas → Cosecha → «DAT para la almazara»',"abrirDAT()"],
   ['Cuaderno de campo (modelo Junta)','Campo → Curar → Curaciones → «Cuaderno de campo»',"abrirCuaderno()"],
-  ['Cubas estándar (tus mezclas de siempre)','Campo → Curar → Curaciones, al final',"SUB.campo='trat';ir('campo')"],
+  ['Mis cubas (tus mezclas de siempre, antes «cubas estándar»)','Campo → Curar, arriba del todo; y al apuntar una curación',"SUB.campo='trat';ir('campo')"],
   ['Lo que llevaba cada atomizador','Campo → Curar → Curaciones',"SUB.campo='trat';ir('campo')"],
   ['Calcular dosis y regular el atomizador','Campo → Curar → Dosis',"SUB.campo='calc';ir('campo')"],
   ['Notas y fotos del campo','Campo → Notas',"SUB.campo='notas';ir('campo')"],
@@ -3640,7 +3684,7 @@ function vCampo(){
       return `<tr class="click" ${pend?`data-ed="tareas:${t.id}"`:`onclick="verTarea('${t.id}')"`}><td>${pend?`<span class="dot ${col}"></span>`:''}${esc(t.titulo)}<div class="mut">${esc(t.tipo||'')}${t.finca_id?' · '+esc(fincaNom(t.finca_id)):''}${t.repetir_dias?' · cada '+t.repetir_dias+' días':''}${pend&&finTarea(t)?` · ${rangoTxt(t)}${diasHechos(t).length?` · ${diasHechos(t).length} de ${difDias(t.fecha,t.fecha_fin)+1} días hechos`:''}`:''}</div>${lT?`<div class="mut">${lT}</div>`:''}</td><td class="n">${pend?(rangoTxt(t)||diaSemana(t.fecha)):fFecha(t.hecha_fecha||t.fecha)}${pend?`<div class="mut">${fFecha(t.fecha)}</div>`:''}</td>${pend?`<td class="n">${btnHecha(t)}</td>`:''}</tr>`}).join('')}</table>`:`<p class="mut">${pend?'No hay tareas pendientes.':'Aún no hay tareas hechas.'}</p>`}
       <div class="row" style="margin-top:10px"><button class="btn sec sm" onclick="SUB.verHechas=!SUB.verHechas;render()">${pend?'Ver las hechas':'Ver las pendientes'}</button>${pend?'<button class="btn sec sm" onclick="ics()">Pasar avisos al calendario del móvil (.ics)</button>':''}</div></div>`+vReuniones();
   }
-  return tabs+`<div class="card"><h2>Curaciones<span class="sp"></span><button class="btn sm" onclick="abrirCuaderno()">Cuaderno de campo</button></h2><p class="mut">Qué llevaba cada cuba, en qué finca y cuánto caldo. Sirve de registro para el cuaderno de campo.</p>${htmlTratamientos()}</div>${htmlCubas()}`;
+  return tabs+htmlCubas()+`<div class="card"><h2>Curaciones hechas<span class="sp"></span><button class="btn sm" onclick="abrirAplicacion()">+ Apuntar</button></h2>${htmlTratamientos()}</div>`;
 }
 
 // ===== Tiempo =====
