@@ -188,7 +188,7 @@ details.adv{margin:4px 0 10px}details.adv summary{cursor:pointer;color:var(--olv
 
 <script>
 // ===== Configuración =====
-const VERSION = '3.54';
+const VERSION = '3.55';
 const VERSION_FECHA = '3 nov 2026';
 const CREDITOS = `Olivas v${VERSION} (${VERSION_FECHA}) · © 2026 Alfonso Carrascosa Martínez · Hecha con Claude (Anthropic)`;
 const SUPA_URL = 'https://kseyndjbmkaflpoqitsj.supabase.co';
@@ -2567,86 +2567,69 @@ function htmlTratamientos(){
       ${ps.map(p=>`<div>${esc(p.producto)} <span class="mut">${esc(p.dosis||'')}${p.cantidad!=null?` · total ${fCant({n:Number(p.cantidad),u:p.unidad||''})}`:''}</span></div>`).join('')}</div>`; }).join('')
   :'<p class="mut">Sin curaciones apuntadas.</p>'}`;
 }
+// ===== Calcular dosis: solo con lo que sabe el agricultor (etiqueta, cuba, velocidad y olivos que hace con una cuba) =====
+const esBarra=m=>m?.tipo==='Cuba con barra (herbicida)';
+const usaVel=m=>!['Cuba de pistolas','Mochila'].includes(m?.tipo); // con pistolas o mochila la velocidad no cuenta
+const claveCalc=(m,f)=>esBarra(m)?m.id:`${m?.id}|${f?.id}`; // herbicida: por equipo; copa: por equipo y finca (cada finca tiene su olivo)
+// Olivos por cuba y a qué velocidad los contaste: lo que pusiste aquí o, si no, lo que sale de las cubas de la finca
+function refCalc(m,f){ const r=(AJ.calc_ref||{})[claveCalc(m,f)]; if(r?.o>0) return r;
+  const v=Number(m?.velocidad_kmh)||null, cu=Number(m?.capacidad_l)||0;
+  if(esBarra(m)&&olivosCubaSuelo()) return {o:olivosCubaSuelo(), v:Number(AJ.ol_cuba_suelo_v)||v};
+  const n=cubasDe(f,esBarra(m)); if(n>0&&f?.olivos>0&&cu) return {o:Math.round(f.olivos/(n*(esBarra(m)?cubaSuelo():cubaCopa())/cu)), v};
+  return {o:null, v}; }
+const VEL_REC={barra:[3,6,'con barra lo normal es ir entre 4 y 6 km/h; con piedras o desnivel, 3–4 km/h para que la barra no bote'],
+  copa:[2.5,6,'con atomizador lo normal es entre 4 y 6 km/h; 3–4 km/h con olivos grandes o muy espesos']};
 function vCalc(){
   const at=atomizadores(), m=at.find(x=>x.id===SUB.calcM)||at[0], f=D.fincas.find(x=>x.id===SUB.calcF)||D.fincas.find(x=>x.activa);
-  const olha = f&&f.ha&&f.olivos ? f.olivos/f.ha : '';
-  // olivos que haces con una cuba: lo que tengas puesto (herbicida) o lo que sale de las cubas que gastas en la finca
-  const herbM=m?.tipo==='Cuba con barra (herbicida)', cubaM=Number(m?.capacidad_l||ULT.apl?.cuba_l)||0, nF=cubasDe(f,herbM);
-  const olcIni = herbM&&olivosCubaSuelo() ? olivosCubaSuelo() : nF>0&&f?.olivos>0&&cubaM ? Math.round(f.olivos/(nF*(herbM?cubaSuelo():cubaCopa())/cubaM)) : '';
+  const R=refCalc(m,f), herb=esBarra(m), vel=usaVel(m);
   const inp=(id,l,v,ph='')=>`<label>${l}<input id="${id}" inputmode="decimal" value="${v??''}" placeholder="${ph}"></label>`;
   return `<div class="card"><h2>Calcular dosis<span class="sp"></span><button class="btn sm" onclick="abrirAplicacion()">Apuntar curación</button></h2>
-    <p class="mut">Esto es una calculadora: no apunta la curación. Cuando cures, apúntala con «Apuntar curación».</p>
     ${at.length?chipsFiltro('calcM',at.map(x=>[x.id,x.nombre]),m?.id):''}${chipsFiltro('calcF',D.fincas.filter(x=>x.activa).map(x=>[x.id,x.nombre]),f?.id)}
-    <b>1. ¿Cuánto producto echo en la cuba o mochila?</b>
-    <div class="grid2">${inp('cDos','Dosis de la etiqueta','')}${inp('cCuba','Cuba o mochila (litros)',m?.capacidad_l||ULT.apl?.cuba_l||'')}</div>
-    <div class="chips mini" id="cUni" style="margin-bottom:10px">${DOSIS_U.map(([k])=>`<button type="button" class="chip ${k===(herbM?'l/ha':'g/100L')?'on':''}" data-u="${k}">${k}</button>`).join('')}</div>
-    <div class="grid2">${inp('cCubas','Nº de cubas','1')}${inp('cOlc',`Olivos que haces con una cuba${herbM?' (herbicida)':''}`,olcIni,'p. ej. 250')}</div>
-    <details class="adv"><summary>Sé los litros de caldo por hectárea</summary>${inp('cLha','Litros de caldo por ha','')}</details>
-    <div class="aviso ok" id="r1">—</div>
-    <b>2. ¿Cuánto caldo necesito?</b>
-    <div class="grid2">${inp('cOl','Olivos a tratar',f?.olivos||'')}${inp('cLol','Litros por olivo','5')}</div>
-    <div class="aviso ok" id="r2">—</div>
-    ${(()=>{ const t=m?.tipo||'Atomizador';
-      if(t==='Cuba de pistolas') return `<b>3. Cuba de pistolas</b><div class="grid2">${inp('cCauP','Caudal de cada pistola (l/min)',m?.caudal_lmin||'')}${inp('cNp','Nº de pistolas',m?.n_pistolas||2)}${inp('cSegOl','Segundos que das a cada olivo','')}${inp('cObj','Litros por olivo que quiero','')}</div><div class="aviso ok" id="r3">—</div><p class="mut">Para el caudal: dispara una pistola un minuto dentro de un cubo o bidón y mide los litros.</p>`;
-      if(t==='Cuba con barra (herbicida)') return `<details class="adv"><summary><b>3. Regular la barra</b> (opcional: caudal y ancho)</summary><div class="grid2">${inp('cCau','Caudal total de la barra (l/min)',m?.caudal_lmin||'')}${inp('cAncho','Ancho de la barra (m)',m?.ancho_m||'')}${inp('cVel','Velocidad (km/h)',m?.velocidad_kmh||'')}${inp('cSeg','…o segundos en recorrer 100 m','')}${inp('cObjHa','Litros por hectárea que quiero','')}</div><div class="aviso ok" id="r3">—</div><p class="mut">Para el caudal: con la presión de trabajo, recoge lo que echa una boquilla en un minuto y multiplícalo por el nº de boquillas.</p></details>`;
-      if(t==='Mochila') return `<b>3. Mochila</b><div class="aviso ok" id="r3">—</div><p class="mut">Con los litros por olivo del punto 2 te digo cuántos olivos da cada mochila.</p>`;
-      return `<b>3. Regular el atomizador</b>
-      <p class="mut" style="margin:2px 0 8px">Pon el caudal, la distancia entre olivos y la velocidad: te digo cuántos litros echas por olivo y a qué velocidad ir para echar los del punto 2. Lo que pongas se queda guardado en el atomizador y en la finca.</p>
-      <div class="grid2">${inp('cCau','Caudal de todas las boquillas (l/min)',m?.caudal_lmin||'','p. ej. 40')}${inp('cMarco','Marco: metros entre olivos (10 si es 10×10)',f?.calle_m||'','p. ej. 10')}
-      ${inp('cVel','Velocidad (km/h)',m?.velocidad_kmh||'','p. ej. 5')}${inp('cSeg','…o segundos que tardas en 100 m','')}</div>
-      <details class="adv"><summary>No sé el caudal: medirlo</summary><p class="mut">Con el atomizador parado, llénalo hasta una marca, abre todas las boquillas a la presión de trabajo y cronometra. Luego mide los litros que ha bajado.</p>
-        <div class="grid2">${inp('cMlit','Litros que han bajado','')}${inp('cMmin','En cuántos minutos','1')}</div></details>
-      <div class="aviso ok" id="r3">—</div>`; })()}</div>
+    <div class="grid2">${inp('cDos','Dosis de la etiqueta','','p. ej. 1')}${inp('cCuba','Litros de la cuba',m?.capacidad_l||ULT.apl?.cuba_l||'')}</div>
+    <div class="chips mini" id="cUni" style="margin:-4px 0 10px">${DOSIS_U.filter(([k])=>!/cuba$/.test(k)).map(([k])=>`<button type="button" class="chip ${k===(herb?'l/ha':'g/100L')?'on':''}" data-u="${k}">${k}</button>`).join('')}</div>
+    <div class="grid2">${vel?inp('cVel','Velocidad (km/h)',R.v?String(R.v).replace('.',','):'','p. ej. 2,6'):''}${inp('cOlc',`Olivos que haces con una cuba${vel?' a esa velocidad':''}`,R.o||'','p. ej. 250')}</div>
+    <div class="aviso ok" id="r1" style="font-size:15px">—</div>
+    <p class="mut" style="margin:4px 0 0">Es una calculadora: no apunta nada. Los olivos por cuba y la velocidad se recuerdan para este equipo${herb?'':' y esta finca'}.</p></div>
   <div class="card"><h2>Recomendaciones orientativas</h2><ul>
-    <li><b>Pistolas y mochila:</b> moja el olivo por dentro y por fuera hasta que la hoja esté brillante, sin que llegue a chorrear. Presión constante.</li>
-    <li><b>Barra de herbicida:</b> boquillas de abanico o antideriva, altura constante sobre el suelo y nunca con viento: la deriva quema el olivo.</li>
-    <li><b>Velocidad del atomizador:</b> en olivar tradicional se suele tratar entre 4 y 6 km/h; más despacio (3-4 km/h) con olivos grandes o muy espesos para que moje por dentro. Ir más rápido baja los litros por olivo.</li>
-    <li><b>Caldo:</b> suele ir de 3 a 8 litros por olivo según el tamaño de la copa. Si la etiqueta da la dosis por hectárea, no subas el caldo sin recalcular el producto.</li>
+    <li><b>Velocidad con barra (herbicida y tratamientos al suelo):</b> lo normal es entre 4 y 6 km/h. Con piedras, desnivel o terrones, 3–4 km/h para que la barra no bote y vaya siempre a la misma altura. Ir despacio no es malo: lo que importa es <b>ir siempre a la misma velocidad</b> que cuando contaste los olivos por cuba. Más rápido echas menos caldo y menos producto por hectárea; más lento, más.</li>
+    <li><b>Velocidad del atomizador:</b> entre 4 y 6 km/h en olivar tradicional; más despacio (3–4 km/h) con olivos grandes o muy espesos para que moje por dentro. Ir más rápido baja los litros por olivo.</li>
+    <li><b>Barra:</b> boquillas de abanico o antideriva, altura constante sobre el suelo (unos 50 cm, o lo que diga la boquilla) y nunca con viento: la deriva quema el olivo. Revisa que ninguna boquilla esté atascada.</li>
+    <li><b>Pistolas y mochila:</b> moja el olivo por dentro y por fuera hasta que la hoja brille, sin que chorree. Presión constante.</li>
+    <li><b>Caldo:</b> en copa suele ir de 3 a 8 litros por olivo según el tamaño. Si la etiqueta da la dosis por hectárea, no cambies el caldo sin recalcular el producto.</li>
     <li><b>Viento:</b> no tratar con más de 10 km/h ni con rachas; mejor a primera hora o al atardecer, sin calor fuerte y con la hoja seca.</li>
     <li><b>Lluvia:</b> deja al menos 4 h sin lluvia después (el cobre necesita secarse sobre la hoja).</li>
-    <li><b>Presión y boquillas:</b> las que indique el fabricante; boquillas antideriva cerca de arroyos y casas. Revisa que ninguna esté atascada.</li>
     <li><b>Siempre:</b> la dosis y el plazo de seguridad de la etiqueta mandan. Apunta cada curación (cuaderno de campo) y lleva el carné de aplicador.</li></ul></div>`;
 }
 function postCalc(){
   const g=id=>pn($('#'+id)?.value)||0; if(!$('#cDos')) return;
   let uni=$('#cUni .chip.on')?.dataset.u||'g/100L';
-  const mC=atomizadores().find(x=>x.id===SUB.calcM)||atomizadores()[0], fC=D.fincas.find(x=>x.id===SUB.calcF)||D.fincas.find(x=>x.activa), herbC=mC?.tipo==='Cuba con barra (herbicida)';
+  const at=atomizadores(), m=at.find(x=>x.id===SUB.calcM)||at[0], f=D.fincas.find(x=>x.id===SUB.calcF)||D.fincas.find(x=>x.activa), herb=esBarra(m), vel=usaVel(m);
+  let R={...refCalc(m,f)};
   const run=()=>{
-    const cuba=g('cCuba'), nc=g('cCubas')||1, olc=g('cOlc'), olhaC=fC?.ha>0&&fC?.olivos>0?fC.olivos/fC.ha:0, frac=herbC?fraccionTratada(fC):1;
-    // litros por ha: los que pongas o, si no, la cuba entre las hectáreas que da (olivos por cuba ÷ olivos por ha)
-    const lhaAuto=cuba&&olc&&olhaC?cuba/(olc/olhaC*frac):null, lhaIn=g('cLha')||lhaAuto;
-    const pc=porCuba(g('cDos'),uni,cuba,lhaIn);
-    const deHa=/ha$/.test(uni)&&!g('cLha')&&lhaAuto?`<br><span class="mut">Una cuba de ${num(cuba)} l da para ${num(olc)} olivos = ${num(olc/olhaC*frac,2)} ha${herbC?` tratadas (${esc(fC.nombre)}, dejando ${num(franjaM(),2)} m sin tratar en el centro de la calle)`:` (${esc(fC.nombre)})`} → ${num(lhaAuto)} l/ha</span>`:'';
-    $('#r1').innerHTML = pc ? `Por cuba: <b>${fCant(pc)}</b> · para ${nn(nc)} ${nc===1?'cuba':'cubas'}: <b>${fCant({n:pc.n*nc,u:pc.u})}</b>${deHa}` : (/ha$/.test(uni)&&!lhaIn?'Para dosis por hectárea pon cuántos olivos haces con una cuba.':'Pon la dosis y la cuba.');
-    const ol=g('cOl'), lol=g('cLol'), lit=ol*lol;
-    $('#r2').innerHTML = lit ? `Necesitas <b>${num(lit)} l</b> de caldo${cuba?` = <b>${num(lit/cuba,1)} cubas</b> de ${num(cuba)} l`:''}` : 'Pon olivos y litros por olivo.';
-    if($('#cCauP')){ const cp=g('cCauP'), np=g('cNp')||1, so=g('cSegOl'), obj=g('cObj'); let t='';
-      if(cp&&so){ const lo=cp*so/60; t+=`Echas <b>${num(lo,1)} l por olivo</b>${cuba?` · una cuba da para <b>${num(cuba/lo)} olivos</b>`:''}. `; }
-      if(cp&&obj) t+=`Para ${num(obj,1)} l por olivo dale <b>${num(obj*60/cp)} segundos</b> a cada uno. `;
-      if(cp&&cuba) t+=`Con ${np} ${np===1?'pistola':'pistolas'} la cuba se vacía en unos <b>${num(cuba/(cp*np))} minutos</b>.`;
-      $('#r3').innerHTML=t||'Pon el caudal de la pistola y los segundos por olivo.'; return; }
-    if($('#cAncho')){ const ca=g('cCau'), an=g('cAncho'), ve=g('cVel')||(g('cSeg')?360/g('cSeg'):0), oh=g('cObjHa'); let t='';
-      if(g('cSeg')&&!g('cVel')) t+=`Vas a <b>${num(ve,1)} km/h</b>. `;
-      const lh=litrosHa(ca,ve,an); if(lh){ t+=`Echas <b>${num(lh)} l/ha</b>${cuba?` · una cuba da para <b>${num(cuba/lh,2)} ha</b>`:''}. `; }
-      if(ca&&an&&oh) t+=`Para ${num(oh)} l/ha ve a <b>${num(velPara(ca,oh,an),1)} km/h</b>.`;
-      $('#r3').innerHTML=t||'Pon caudal, ancho de barra y velocidad.'; return; }
-    if(!$('#cCau')){ const lo=g('cLol'); $('#r3').innerHTML = cuba&&lo ? `Cada mochila de ${num(cuba)} l da para <b>${num(cuba/lo)} olivos</b>${ol?` · para ${num(ol)} olivos necesitas <b>${num(Math.ceil(ol*lo/cuba))} mochilas</b>`:''}.` : 'Pon los litros de la mochila y los litros por olivo.'; return; }
-    if(g('cMlit')&&g('cMmin')&&document.activeElement&&['cMlit','cMmin'].includes(document.activeElement.id)) $('#cCau').value=String(Math.round(g('cMlit')/g('cMmin')*10)/10).replace('.',',');
-    const cau=g('cCau'), dist=g('cMarco'), vel=g('cVel')||(g('cSeg')?360/g('cSeg'):0), obj=g('cLol');
-    let t='';
-    if(g('cSeg')&&!g('cVel')) t+=`Vas a <b>${num(vel,1)} km/h</b>. `;
-    if(cau&&dist&&vel){ const lol=cau*dist*0.06/vel, lha=dist?litrosHa(cau,vel,dist):null; t+=`Echas <b>${num(lol,1)} litros por olivo</b>${lha?` (${num(lha)} l/ha con marco de ${num(dist)} × ${num(dist)} m)`:''}${cuba?` · una cuba de ${num(cuba)} l da para <b>${num(cuba/lol)} olivos</b>`:''}. `; }
-    if(cau&&dist&&obj){ const v=cau*dist*0.06/obj; t+=`Para echar <b>${num(obj,1)} l por olivo</b> (punto 2) ve a <b>${num(v,1)} km/h</b>${v>6.5?' — demasiado rápido: cierra boquillas o baja el caudal':v<2.5?' — muy lento: abre más boquillas o sube el caudal':''}.`; }
-    $('#r3').innerHTML = t || (!cau?'Falta el caudal (abajo te digo cómo medirlo).':!dist?'Falta la distancia entre olivos.':'Pon la velocidad o los litros por olivo del punto 2.');
-  };
-  // guardar en el atomizador y en la finca lo que se cambie
-  const mq=atomizadores().find(x=>x.id===SUB.calcM)||atomizadores()[0], fi=D.fincas.find(x=>x.id===SUB.calcF)||D.fincas.find(x=>x.activa);
-  const guarda=async(tabla,id,campo,v,nom)=>{ if(!id||v==null) return; const {error}=await sb.from(tabla).update({[campo]:v}).eq('id',id); if(error){ sinRed(error); return; } const r=D[tabla.replace('olv_','')].find(x=>x.id===id); if(r) r[campo]=v; toast(`Guardado en ${nom}`); };
-  [['cCau','caudal_lmin'],['cVel','velocidad_kmh']].forEach(([id,c])=>{ const el=$('#'+id); if(el&&mq&&esAplicacion(mq)) el.addEventListener('change',()=>guarda('olv_maquinas',mq.id,c,pn(el.value),mq.nombre)); });
-  const em=$('#cMarco'); if(em&&fi) em.addEventListener('change',()=>guarda('olv_fincas',fi.id,'calle_m',pn(em.value),fi.nombre));
-  ['cMlit','cMmin'].forEach(id=>{ const el=$('#'+id); if(el) el.addEventListener('change',()=>{ const c=$('#cCau'); if(c) c.dispatchEvent(new Event('change')); }); });
-
-  const eo=$('#cOlc'); if(eo&&herbC) eo.addEventListener('change',()=>{ const v=pn(eo.value); AJ.ol_cuba_suelo=v>0?v:null; guardarAjustes(true); });
+    const cuba=g('cCuba'), olc=g('cOlc'), v=g('cVel'), dos=g('cDos'), olha=f?.ha>0&&f?.olivos>0?f.olivos/f.ha:0, frac=herb?fraccionTratada(f):1;
+    const haCuba=olc&&olha?olc/olha*frac:null, lha=cuba&&haCuba?cuba/haCuba:null, pc=porCuba(dos,uni,cuba,lha);
+    const nCubas=olc&&f?.olivos?f.olivos/olc:null;
+    let h='';
+    if(!cuba) h='Pon los litros de la cuba.';
+    else if(!dos) h='Pon la dosis que dice la etiqueta.';
+    else if(!pc) h=/ha$/.test(uni)?(olha?'Pon cuántos olivos haces con una cuba.':`Pon en ${esc(f?.nombre||'la finca')} sus olivos y hectáreas (Más → Fincas).`):'Pon la dosis y la cuba.';
+    else { h=`🧪 Echa <b style="font-size:20px">${fCant(pc)}</b> en cada cuba de ${num(cuba)} l`;
+      if(nCubas) h+=`<br>${esc(f.nombre)}: ${num(f.olivos)} olivos → <b>${num(nCubas,1)} cubas</b> · <b>${fCant({n:pc.n*nCubas,u:pc.u})}</b> de producto en total`;
+      if(olc) h+=`<br><span class="mut">Caldo: ${num(cuba/olc,1)} l por olivo${lha?` · ${num(lha)} l/ha${herb?' tratada':''}`:''}${haCuba?` · una cuba da para ${num(haCuba,2)} ha${herb?` tratadas (dejando ${num(franjaM(),2)} m sin tratar en el centro de la calle)`:''}`:''}</span>`; }
+    // velocidad: aviso si cambias la de cuando contaste los olivos, y recomendación
+    if(vel&&v){ const [mn,mx,txt]=VEL_REC[herb?'barra':'copa'];
+      if(R.v&&Math.abs(v-R.v)>=0.1&&R.o) h+=`<br><span class="mut">Contaste ${num(R.o)} olivos por cuba a ${num(R.v,1)} km/h; a ${num(v,1)} km/h son unos ${num(Math.round(R.o*v/R.v))} (ya cambiado arriba).</span>`;
+      if((v<mn||v>mx)&&!(R.v&&Math.abs(v-R.v)<0.1)) h+=`<br><span class="mut">ℹ️ A ${num(v,1)} km/h: ${esc(txt)}. Si vas siempre igual y contaste los olivos a esa velocidad, la dosis sale bien.</span>`; }
+    $('#r1').innerHTML=h; };
+  // si cambias la velocidad sin tocar los olivos, los olivos por cuba cambian en proporción (mismo caudal: más rápido, más olivos)
+  let olTocado=false;
+  $('#cOlc')?.addEventListener('input',()=>{ olTocado=true; });
+  $('#cVel')?.addEventListener('input',()=>{ const v=g('cVel'); if(!olTocado&&R.o&&R.v&&v>0) $('#cOlc').value=Math.round(R.o*v/R.v); });
+  // lo que pones queda como referencia para este equipo (y finca)
+  const guardaRef=()=>{ const o=g('cOlc'), v=g('cVel')||R.v||null; if(!(o>0)) return; R={o,v}; olTocado=false;
+    AJ.calc_ref={...(AJ.calc_ref||{}),[claveCalc(m,f)]:{o,v}}; if(herb){ AJ.ol_cuba_suelo=o; AJ.ol_cuba_suelo_v=v; } guardarAjustes(true); run(); };
+  $('#cOlc')?.addEventListener('change',guardaRef);
+  $('#cVel')?.addEventListener('change',()=>{ if(olTocado||!R.v) guardaRef(); });
   document.querySelectorAll('#cUni .chip').forEach(b=>b.onclick=()=>{ document.querySelectorAll('#cUni .chip').forEach(x=>x.classList.remove('on')); b.classList.add('on'); uni=b.dataset.u; run(); });
   document.querySelectorAll('#view input').forEach(i=>i.addEventListener('input',run)); run();
 }
@@ -3181,7 +3164,7 @@ const MAPA=[
   ['Mis cubas (tus mezclas de siempre, antes «cubas estándar»)','Campo → Curar, arriba del todo; y al apuntar una curación',"SUB.campo='trat';ir('campo')"],
   ['Dosis por hectárea («1 l/ha tratada») y olivos que haces con una cuba de herbicida','Campo → Almacén → toca el producto → dosis en «l/ha»; o Calcular dosis con la cuba de herbicida',"SUB.campo='almacen';ir('campo')"],
   ['Lo que llevaba cada atomizador','Campo → Curar → Curaciones',"SUB.campo='trat';ir('campo')"],
-  ['Calcular dosis y regular el atomizador','Campo → Curar → Dosis',"SUB.campo='calc';ir('campo')"],
+  ['Calcular dosis: producto por cuba con la etiqueta, la cuba, la velocidad y los olivos por cuba; velocidades recomendadas','Campo → Curar → Calcular dosis',"SUB.campo='calc';ir('campo')"],
   ['Notas y fotos del campo','Campo → Notas',"SUB.campo='notas';ir('campo')"],
   ['Tareas pendientes y hechas','Campo → Agenda',"SUB.campo='tareas';ir('campo')"],
   ['Gastos, cobros y facturas','Cuentas',"SUB.cuentas='gastos';ir('cuentas')"],
