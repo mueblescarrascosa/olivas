@@ -92,6 +92,7 @@ dialog h3{margin:0 0 12px}
 .apuntar button{border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:12px;padding:14px 8px;font:inherit;font-weight:600;display:flex;align-items:center;gap:10px;cursor:pointer;text-align:left;min-width:0;overflow-wrap:anywhere;hyphens:auto}
 .apuntar button span{font-size:22px}
 .apuntar.tri{grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}.apuntar.tri button{flex-direction:column;justify-content:center;gap:3px;padding:9px 4px;font-size:13px;text-align:center;line-height:1.2;hyphens:none;overflow-wrap:normal}.apuntar.tri button span{font-size:22px}
+details.aj{padding-top:12px;padding-bottom:12px}details.aj>summary{display:flex;align-items:center;gap:8px;font-weight:700;font-size:16px;cursor:pointer;list-style:none}details.aj>summary::-webkit-details-marker{display:none}details.aj>summary::after{content:'›';color:var(--mut);font-size:20px;margin-left:auto;transition:transform .15s}details.aj[open]>summary::after{transform:rotate(90deg)}details.aj[open]>summary{margin-bottom:10px}details.aj>summary .sp{display:none}
 .apuntar.mini{gap:6px}.apuntar.mini button{padding:8px;gap:8px;font-size:14px;border-radius:10px}.apuntar.mini button span{font-size:18px}.apuntar.mini .mut{font-weight:400;font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 @media (min-width:600px){.apuntar{grid-template-columns:repeat(3,1fr)}}
 @media (max-width:400px){.apuntar button{padding:12px 7px;gap:7px;font-size:15px}.apuntar button span{font-size:19px}}
@@ -187,7 +188,7 @@ details.adv{margin:4px 0 10px}details.adv summary{cursor:pointer;color:var(--olv
 
 <script>
 // ===== Configuración =====
-const VERSION = '3.53';
+const VERSION = '3.54';
 const VERSION_FECHA = '3 nov 2026';
 const CREDITOS = `Olivas v${VERSION} (${VERSION_FECHA}) · © 2026 Alfonso Carrascosa Martínez · Hecha con Claude (Anthropic)`;
 const SUPA_URL = 'https://kseyndjbmkaflpoqitsj.supabase.co';
@@ -3178,6 +3179,7 @@ const MAPA=[
   ['DAT para llevar la aceituna a la almazara','Cuentas → Cosecha → «DAT para la almazara»',"abrirDAT()"],
   ['Cuaderno de campo (modelo Junta)','Campo → Curar → Curaciones → «Cuaderno de campo»',"abrirCuaderno()"],
   ['Mis cubas (tus mezclas de siempre, antes «cubas estándar»)','Campo → Curar, arriba del todo; y al apuntar una curación',"SUB.campo='trat';ir('campo')"],
+  ['Dosis por hectárea («1 l/ha tratada») y olivos que haces con una cuba de herbicida','Campo → Almacén → toca el producto → dosis en «l/ha»; o Calcular dosis con la cuba de herbicida',"SUB.campo='almacen';ir('campo')"],
   ['Lo que llevaba cada atomizador','Campo → Curar → Curaciones',"SUB.campo='trat';ir('campo')"],
   ['Calcular dosis y regular el atomizador','Campo → Curar → Dosis',"SUB.campo='calc';ir('campo')"],
   ['Notas y fotos del campo','Campo → Notas',"SUB.campo='notas';ir('campo')"],
@@ -3452,7 +3454,14 @@ async function ponerFincaAqui(){ const R=SIG_SEL; if(!R) return; const f=D.finca
   const {error}=await sb.from('olv_fincas').update({lat:Math.round(R.lat*1e6)/1e6, lon:Math.round(R.lon*1e6)/1e6}).eq('id',f.id); if(error){ if(!sinRed(error)) toast('Error: '+error.message); return; }
   await cargar('fincas'); render(); toast('Ubicación de la finca guardada'); }
 
-function vAyuda(){ return `<div class="card"><h2>¿Dónde está cada cosa?</h2>${MAPA.map(([q,d,fn])=>`<div class="lab click" onclick="${fn}"><b>${esc(q)}</b><div class="mut">${esc(d)}</div></div>`).join('')}</div>`; }
+// Lista compacta con buscador: escribe «cuba», «pagar», «riego»… y quedan solo esas
+function vAyuda(){ return `<div class="card"><h2>¿Dónde está cada cosa?</h2>
+  <input id="ayQ" type="search" placeholder="🔎 Escribe qué buscas: cuba, pagar, riego…" autocomplete="off" oninput="filtrarAyuda(this.value)" style="margin-bottom:8px">
+  <table id="ayL">${MAPA.map(([q,d,fn])=>`<tr class="click" data-q="${esc(normProd(q+' '+d))}" onclick="${fn}"><td style="padding:7px 4px"><b style="font-weight:600">${esc(q)}</b><div class="mut" style="font-size:13px">${esc(d)}</div></td><td class="n mut" style="width:14px">›</td></tr>`).join('')}</table>
+  <p class="mut" id="ayNo" style="display:none">No encuentro eso. Prueba con otra palabra o usa la lupa de arriba.</p></div>`; }
+function filtrarAyuda(t){ const ws=normProd(t).split(' ').filter(Boolean); let n=0;
+  document.querySelectorAll('#ayL tr').forEach(r=>{ const ok=ws.every(w=>r.dataset.q.includes(w)); r.style.display=ok?'':'none'; if(ok) n++; });
+  const no=$('#ayNo'); if(no) no.style.display=n?'none':''; }
 
 function vCuentas(){
   const s=SUB.cuentas||'gastos';
@@ -3955,9 +3964,16 @@ function vMasDentro(){
   <div class="row"><button class="btn" id="ajGuardar">Guardar ajustes</button><button class="btn sec" onclick="abrirCopia()">Copia de seguridad</button><button class="btn sec" onclick="salir()">Cerrar sesión</button></div>
   <p class="creditos">Olivas · versión ${VERSION} (${VERSION_FECHA})<br>© 2026 Alfonso Carrascosa Martínez<br>Hecha con Claude, de Anthropic</p>`;
 }
+// Ajustes plegados: cada apartado en una línea; se abre al tocarlo (los campos siguen en la página, «Guardar ajustes» los lee igual)
+const AJ_ABIERTOS=new Set();
+function plegarAjustes(){ document.querySelectorAll('#view > .card').forEach(c=>{ const h=c.querySelector(':scope > h2'); if(!h) return;
+  const d=document.createElement('details'), s=document.createElement('summary'), k=h.textContent.trim(); d.className='card aj'; d.open=AJ_ABIERTOS.has(k);
+  s.innerHTML=h.innerHTML; d.append(s); [...c.childNodes].forEach(n=>{ if(n!==h) d.append(n); }); c.replaceWith(d);
+  d.addEventListener('toggle',()=>{ d.open?AJ_ABIERTOS.add(k):AJ_ABIERTOS.delete(k); }); }); }
 function postMas(){
   postAjustesViajes(); pintarAvisosMovil();
   const b=$('#ajGuardar'); if(!b) return;
+  plegarAjustes();
   b.onclick=()=>{
     AJ.cats=$('#ajCats').value.split('\n').map(s=>s.trim()).filter(Boolean);
     document.querySelectorAll('[data-umb]').forEach(i=>{ const v=pn(i.value); if(v!=null&&!isNaN(v)) AJ.umb[i.dataset.umb]=v; });
